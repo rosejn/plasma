@@ -1,4 +1,7 @@
 (ns plasma.query-test
-  (:use plasma.query))
+  (:use clojure.test
+        plasma.query))
 
+(deftest path-start []
+  (is (= true true)))
 

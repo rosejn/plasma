@@ -1,7 +1,7 @@
 (ns plasma.peer
   (:use [aleph core tcp formats]
         jiraph
-        [plasma core query])
+        [plasma core])
   (:require [clojure.contrib.logging :as log]))
 
 (def DEFAULT-PORT 4242)
@@ -38,6 +38,9 @@
   (if-let [con (get @connection-pool* [host port])]
     (refresh-connection con)
     (create-connection host port)))
+
+(defn query? [o] false)
+(defn run-query [q] nil)
 
 (defn- query-handler [graph q]
   (let [resp (with-graph graph

@@ -48,14 +48,14 @@
     (apply add-node! :graph id key-vals)
     id))
 
-(defn find-node [id]
-  (get-node :graph id))
+(defn find-node [uuid]
+  (get-node :graph uuid))
 
-(defn proxy-node [url]
-  (node :proxy url))
+(defn proxy-node [uuid url]
+  (node uuid :proxy url))
 
-(defn proxy-node? [id]
-  (contains? (find-node id) :proxy))
+(defn proxy-node? [uuid]
+  (contains? (find-node uuid) :proxy))
 
 (defmacro with-nodes! [bindings & body]
   (let [nodes (map (fn [[node-sym props]]
