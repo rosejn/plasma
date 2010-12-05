@@ -1,6 +1,8 @@
 (ns plasma.core
-  (:use [aleph core tcp formats]
-        jiraph))
+  (:use 
+    [lamina core]
+    [aleph tcp formats]
+    [jiraph graph]))
 
 (def ROOT-ID "ROOT")
 
@@ -11,7 +13,6 @@
 (def *current-edge-preds* nil)
 (def *proxy-results* nil)
 
-
 (defn url-map [url]
   (let [match (re-find #"(.*)://([a-zA-Z-_.]*):([0-9]*)" url)
         [_ proto host port] match]
@@ -21,16 +22,16 @@
 
 (defmulti peer-sender #(:proto (url-map %)))
 
-(defn plasma-graph
+(comment defn plasma-graph
   "You need to call this function with the path to your local plasma database
   before using the rest of this library.  If no DB currently exists, a new
   one will be created."
   [g]
-  (open-graph g)
+  (open! g)
   (set-graph! g))
 
 (defn clear-graph []
-  (truncate-graph!))
+  (truncate!))
 
 (defn uuid
   "Creates a random, immutable UUID object that is comparable using the '=' function."
@@ -67,10 +68,17 @@
         nodes (vec (apply concat nodes))]
     `(let ~nodes ~@body)))
 
-(defn edge [from to & props]
-  {:pre [(contains? (apply hash-map props) :label)]}
-  (apply assoc-edge! :graph from to props))
+(defn edge [from to & {:as props}]
+  {:pre [(contains? props :label)]}
+  (append-node! :graph from 
+    {:edges {to props}}))
 
-(defn remove-edge [from to]
+(defn get-edges [node & [pred]]
+  (let [n (find-node node)]
+    (if pred
+      (edges n pred)
+      (edges n))))
+
+(comment defn remove-edge [from to]
   (delete-edge! :graph from to))
 

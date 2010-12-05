@@ -1,7 +1,7 @@
 (ns plasma.operator
   (:use plasma.core
-        jiraph
-        [aleph core])
+        [jiraph graph]
+        [lamina core])
   (:require [clojure (zip :as zip)]))
 
 (def *debug* true)
@@ -114,8 +114,8 @@
         (let [uuid (get oa src-key)]
           (if (proxy-node? uuid)
             (remote-query recv id)
-            (let [edges (vals (get-edges :graph uuid))
-                  tgts  (map :to-id (filter edge-pred-fn edges))]
+            (let [edges (get-edges uuid edge-pred-fn)
+                  tgts (keys edges)]
               (doseq [tgt tgts]
                 ;(println "traverse - out: " tgt)
                 (enqueue out (assoc oa id tgt)))

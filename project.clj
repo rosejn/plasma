@@ -1,12 +1,10 @@
 (defproject plasma "0.1.0-SNAPSHOT"
   :description "Distributed graph computing."
-;  :repositories [["jboss" "http://repository.jboss.org/nexus/content/groups/public/"]]
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
-;                 [org.jboss.netty/netty "3.2.1.Final"]
-;                 [aleph-core "0.6.0-SNAPSHOT"]
-                 [aleph "0.1.2-SNAPSHOT"]
-                 [jiraph "0.1.3-SNAPSHOT"]
+                 [aleph "0.1.4-SNAPSHOT"]
+                 [jiraph "0.5.0-SNAPSHOT"]
+                 [clojure-protobuf "0.2.4"]
                  [clj-serializer "0.1.0"]
-                 [vijual "0.1.0-SNAPSHOT"]]
-  :dev-dependencies [[native-deps "1.0.0"]])
+                 [org.clojars.overtone/vijual "0.2.1"]])
+

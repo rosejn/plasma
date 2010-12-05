@@ -1,12 +1,11 @@
 (ns plasma.operator-test
   (:use [plasma core operator]
         [clojure test stacktrace]
-        [aleph core]
-        jiraph))
+        [lamina core]
+        [jiraph graph]))
 
-(defgraph G
-          :path "db" :create true
-          (layer :graph))
+(def G
+  {:graph (layer "test/db")})
 
 (defn test-graph []
   (node "ROOT" :label :self)

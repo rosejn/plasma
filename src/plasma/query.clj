@@ -63,12 +63,19 @@
 
 (defn path-plan
   [start path]
-  (second
-    (reduce (fn [[root last-trav] segment]
-            (let [trav (plan-op 'traverse-op :src last-trav :edge segment)]
-              [(plan-op 'join-op :left start :right trav) trav]))
-          [start start]
-          path)))
+  (let [start-id (:id start)]
+    (loop [root-id start-id
+           src-id  start-id
+           path path
+           plan {start-id start}]
+      (if path
+        (let [trav (plan-op 'traverse-op :src src-id :edge (first path))
+              t-id (:id trav)
+              join (plan-op 'join-op :left root-id :right t-id)
+              j-id (:id join)]
+          (recur j-id t-id (next path)
+                 (assoc plan j-id join t-id trav)))
+        plan))))
 
 (defn traversal-path
   "Takes a traversal-plan and a single [bind-name [path ... segment]] pair and
