@@ -6,5 +6,6 @@
                  [jiraph "0.5.0-SNAPSHOT"]
                  [clojure-protobuf "0.2.4"]
                  [clj-serializer "0.1.0"]
-                 [org.clojars.overtone/vijual "0.2.1"]])
+                 [vijual "0.1.0-SNAPSHOT"]])
+;                 [org.clojars.overtone/vijual "0.2.1"]])
 

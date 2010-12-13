@@ -1,6 +1,6 @@
 (ns plasma.query
   (:use [plasma core operator]
-        jiraph))
+        [jiraph graph]))
 
 (defn where-form [body]
   (let [where? #(and (list? %) (= 'where (first %)))
@@ -26,7 +26,7 @@
       (#{'= '< '> '>= '<=} op) (basic-pred form)
       :default (throw (Exception. (str "Unknown operator in where clause: " op))))))
 
-(defn where->predicates 
+(defn where->predicates
   "Converts a where form in a path query to a set of predicate maps.
 
    Where forms are structured like so:
@@ -43,49 +43,63 @@
             pred-list)))
 
 (defn plan-op
-  [op & {:as args}]
-  (merge {:op op :id (uuid)} args))
+  [op & args]
+  {:type (keyword "plasma.operator" (name op)) 
+   :id (uuid) 
+   :args args})
 
 (defn path-start
-  "Determines the starting operator for a single path component, 
+  "Determines the starting operator for a single path component,
   returning the start-op and rest of the path."
-  [plan start path]
+  [{:keys [pbind ops] :as plan} start path]
+  ;(println "path-start: " start " -> " (get pbind start))
   (cond
     ; path starting with a keyword means start at the root
-    (keyword? start) [(plan-op 'param-op :init ROOT-ID) path]
+    (keyword? start) [(plan-op :parameter ROOT-ID) path]
 
     ; starting with a symbol, refers to a previous bind point in the query
     (and (symbol? start)
-         (contains? plan start)) [(get plan start) (next path)]
+         (contains? pbind start)) [(get ops (get pbind start)) (next path)]
 
     ; starting with the UUID of a node starts at that node"
-    (node-exists? :graph start) [(plan-op 'param-op :init start) (next path)]))
+    (node-exists? :graph start) [(plan-op :parameter start) (next path)]))
 
 (defn path-plan
+  "Creates the query-plan operator tree to implement a path traversal."
   [start path]
+  ;(println "start: " start)
   (let [start-id (:id start)]
     (loop [root-id start-id
            src-id  start-id
            path path
-           plan {start-id start}]
+           ops {start-id start}]
+      ;(println "ops: " (map :op (vals ops)))
       (if path
-        (let [trav (plan-op 'traverse-op :src src-id :edge (first path))
+        (let [trav (plan-op :traverse src-id (first path))
               t-id (:id trav)
-              join (plan-op 'join-op :left root-id :right t-id)
+              join (plan-op :join root-id t-id)
               j-id (:id join)]
           (recur j-id t-id (next path)
-                 (assoc plan j-id join t-id trav)))
-        plan))))
+                 (assoc ops
+                        j-id join
+                        t-id trav)))
+        [root-id ops]))))
 
 (defn traversal-path
   "Takes a traversal-plan and a single [bind-name [path ... segment]] pair and
   adds the traversal to the plan.
   "
   [plan [bind-name path]]
+  ;(println "path: " path)
+;  (println "ops: " (map :op (vals (:ops plan))))
   (let [start (first path)
         [query-root path] (path-start plan start path)
-        p-plan (path-plan start path)]
-    (assoc plan bind-name p-plan)))
+        [root-op path-ops] (path-plan query-root path)
+        ops (merge (:ops plan) path-ops)
+        plan (assoc-in plan [:pbind bind-name] root-op)]
+    (assoc plan
+           :ops ops
+           :root root-op)))
 
 (defn traversal-tree
   "Convert a seq of [bind-name [path ... segment]] pairs into a query-plan
@@ -95,13 +109,22 @@
   input: [(a [:foo :bar])
           (b [a :baz :zam])]"
   [paths]
-  (reduce traversal-path {} paths))
+  (reduce traversal-path
+          {:ops {} :pbind {} :root nil :params {}}
+          paths))
 
-(defn path-map
-  "Converts from a seq of path bindings to an operator description tree.
-
-  "
-  [bindings])
+(defn selection-ops
+  "Add the selection operators corresponding to a set of predicates
+  to a query plan."
+  [plan preds]
+  (reduce 
+    (fn [plan pred]
+      (let [select-key (get-in plan [:pbind (:binding pred)])
+            op (plan-op :select (:root plan) select-key pred)]
+        (assoc-in (assoc plan :root (:id op))
+                  [:ops (:id op)] op)))
+    plan
+    preds))
 
 (defn path* [q]
   (let [[bindings body]
@@ -120,12 +143,13 @@
                        Missing either a binding or a path operator.")))
         paths (partition 2 bindings)
         trav-tree (traversal-tree paths)
-        pathmap (path-map paths)
-        preds (where->predicates (where-form body))]
-    {:type ::path
-     :paths paths
-     :pmap pathmap
-     :filters preds}))
+        preds (where->predicates (where-form body))
+        plan (merge {:type ::path 
+                     :paths paths 
+                     :filters preds} 
+                    trav-tree)    
+        plan (selection-ops plan preds)]
+    plan))
 
 (defmacro path [& args]
   `(path* (quote ~args)))
@@ -133,4 +157,26 @@
 (defn optimize-query-plan [plan]
   plan)
 
-(defn build-query [plan] nil)
+(defn op-node
+  "Instantiate an operator node based on a plan node."
+  [plan plan-node]
+  ())
+
+(defn build-query
+  "Depth first traversal of query plan, resulting in a fully realized
+  operator tree."
+  [{:keys [ops pbind root] :as plan}]
+  (let [receiver (receive-op (uuid))]))
+
+;
+;
+;(filter (fn [arg]
+;          (or
+;           ()
+;           (and (uuid? arg)
+;                (contains? query-ops arg)))
+;        (:args op))
+;
+;
+;
+
