@@ -117,16 +117,25 @@
   "Add the selection operators corresponding to a set of predicates
   to a query plan."
   [plan preds]
-  (reduce 
-    (fn [plan pred]
-      (let [select-key (get-in plan [:pbind (:binding pred)])
-            op (plan-op :select (:root plan) select-key pred)]
-        (assoc-in (assoc plan :root (:id op))
-                  [:ops (:id op)] op)))
-    plan
-    preds))
+  (let [; flatten with binding name because each bind-point could
+        ; have more than one predicate attached (and ...)
+        flat-preds (partition 2 (mapcat (fn [[bind pred-seq]]
+                         (interleave (repeat bind)
+                                     pred-seq)) preds))]
+    (reduce 
+      (fn [plan [binding pred]]
+        (println "pred: " pred)
+        (let [select-key (get-in plan [:pbind binding])
+              op (plan-op :select (:root plan) select-key pred)]
+          (assoc-in (assoc plan :root (:id op))
+                    [:ops (:id op)] op)))
+      plan
+      flat-preds)))
 
-(defn path* [q]
+(defn path* 
+  "Helper function to 'parse' a path expression and generate an initial
+  query plan."
+  [q]
   (let [[bindings body]
         (cond
           (and (vector? (first q))  ; (path [:a :b :c])
@@ -154,13 +163,32 @@
 (defmacro path [& args]
   `(path* (quote ~args)))
 
-(defn optimize-query-plan [plan]
+(defn optimize-query-plan 
+  [plan]
   plan)
 
+; TODO: Deal with nil receive op...
 (defn op-node
   "Instantiate an operator node based on a plan node."
-  [plan plan-node]
-  ())
+  [plan op-node]
+  (let [{:keys [ops]} plan 
+        {:keys [type id op args]} op-node
+        op-name (symbol (str (name op) "-op"))
+        op-fn (ns-resolve 'plasma.operator op-name)]
+    (case type
+      :plasma.operator/traverse
+      (apply op-fn id nil args)
+      
+      :plasma.operator/join    
+      (apply op-fn id (map #(get ops %) args))
+
+      :plasma.operator/project   
+      :plasma.operator/aggregate
+      :plasma.operator/parameter
+      :plasma.operator/receive 
+      :plasma.operator/send   
+      :plasma.operator/select
+    ))
 
 (defn build-query
   "Depth first traversal of query plan, resulting in a fully realized
@@ -168,15 +196,9 @@
   [{:keys [ops pbind root] :as plan}]
   (let [receiver (receive-op (uuid))]))
 
-;
-;
 ;(filter (fn [arg]
 ;          (or
 ;           ()
 ;           (and (uuid? arg)
 ;                (contains? query-ops arg)))
 ;        (:args op))
-;
-;
-;
-
