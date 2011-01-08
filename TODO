@@ -1,0 +1,37 @@
+Operators:
+
+* and/or logical operators for predicates
+ - AND is just appending more selection operators
+ - OR we need to short-circuit on true and forward OA past
+   next selection ops, else go to next selection operator
+
+* insert node/edge
+* update node/edge
+* delete node/edge
+
+* Add regular expression edge predicates for traverse operator
+
+* get rid of the recv argument to the traversal operator
+  - instead pass query plan as first arg to all ops, and reference implicit
+    receive node there.
+
+Distribution:
+
+Using the query tree dependency zipper, generate a sub-query that can be
+shipped to a remote peer.  It takes the UUID of the traversal node that ran
+into the proxy and the root operator to start from (a receive-op).
+
+* need to make it smart so it only returns up to the aggregation point for
+integrating the results of remote queries
+
+* need to modify the existing query tree to hook in receive channels to get
+the results back (emit nil after a timeout to end query)
+
+* need to stick a send onto the root of the remote query parameterized with
+the local connection info.
+
+Questions:
+
+* transmit only node UUIDs for query results, or full nodes?
+ - send projected node with ID and properties, store in local node-cache
+
