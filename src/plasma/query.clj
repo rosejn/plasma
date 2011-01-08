@@ -44,8 +44,8 @@
 
 (defn plan-op
   [op & args]
-  {:type (keyword "plasma.operator" (name op)) 
-   :id (uuid) 
+  {:type (keyword "plasma.operator" (name op))
+   :id (uuid)
    :args args})
 
 (defn path-start
@@ -122,7 +122,7 @@
         flat-preds (partition 2 (mapcat (fn [[bind pred-seq]]
                          (interleave (repeat bind)
                                      pred-seq)) preds))]
-    (reduce 
+    (reduce
       (fn [plan [binding pred]]
         (println "pred: " pred)
         (let [select-key (get-in plan [:pbind binding])
@@ -132,7 +132,7 @@
       plan
       flat-preds)))
 
-(defn path* 
+(defn path*
   "Helper function to 'parse' a path expression and generate an initial
   query plan."
   [q]
@@ -153,17 +153,17 @@
         paths (partition 2 bindings)
         trav-tree (traversal-tree paths)
         preds (where->predicates (where-form body))
-        plan (merge {:type ::path 
-                     :paths paths 
-                     :filters preds} 
-                    trav-tree)    
+        plan (merge {:type ::path
+                     :paths paths
+                     :filters preds}
+                    trav-tree)
         plan (selection-ops plan preds)]
     plan))
 
 (defmacro path [& args]
   `(path* (quote ~args)))
 
-(defn optimize-query-plan 
+(defn optimize-query-plan
   [plan]
   plan)
 
@@ -171,24 +171,24 @@
 (defn op-node
   "Instantiate an operator node based on a plan node."
   [plan op-node]
-  (let [{:keys [ops]} plan 
+  (let [{:keys [ops]} plan
         {:keys [type id op args]} op-node
         op-name (symbol (str (name op) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
     (case type
       :plasma.operator/traverse
       (apply op-fn id nil args)
-      
-      :plasma.operator/join    
+
+      :plasma.operator/join
       (apply op-fn id (map #(get ops %) args))
 
-      :plasma.operator/project   
+      :plasma.operator/project
       :plasma.operator/aggregate
       :plasma.operator/parameter
-      :plasma.operator/receive 
-      :plasma.operator/send   
+      :plasma.operator/receive
+      :plasma.operator/send
       :plasma.operator/select
-    ))
+    )))
 
 (defn build-query
   "Depth first traversal of query plan, resulting in a fully realized

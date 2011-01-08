@@ -5,3 +5,6 @@
 (deftest path-start []
   (is (= true true)))
 
+(def q (path [:foo :bar]))
+
+

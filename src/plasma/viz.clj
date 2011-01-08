@@ -19,8 +19,14 @@
 ;        _ (println "type: " (:type node)
 ;                   "\nbranch: " branch?)
         children (if branch?
-                   (filter uuid? (:args node))
+                   (case (:type node)
+                     :plasma.operator/join (:args node)   
+                     (:plasma.operator/send
+                      :plasma.operator/select 
+                      :plasma.operator/project 
+                      :plasma.operator/aggregate) [(first (:args node))])
                    nil)
+;        _ (println "children: " children)
         label (case (:type node)
                 :plasma.operator/traverse (str "tr " (second (:args node)))
                 :plasma.operator/parameter (str "pr \"" (first (:args node)) "\"")
