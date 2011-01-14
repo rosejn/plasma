@@ -1,3 +1,16 @@
+* figure out how to correctly project the result set
+ - the pbind has the bind points, but not the final traversal key
+
+* create a legit query plan object
+ - modify parameter-op so it has a name that we can later use when executing a
+   query to bind param vals.
+ for example: (path [:foo :bar])
+ we need a way to bind "ROOT" to the param node, or else execute it with the
+default param value if none is given.
+ - maybe with a map: (execute query {"ROOT" "ROOT"})
+
+
+------------------------
 Operators:
 
 * and/or logical operators for predicates

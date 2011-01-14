@@ -2,31 +2,13 @@
   (:use [plasma core operator]
         [clojure test stacktrace]
         [lamina core]
-        [jiraph graph]))
-
-(def G
-  {:graph (layer "test/db")})
-
-(defn test-graph []
-  (node "ROOT" :label :self)
-  (with-nodes! [music :music
-                synths :synths
-                kick  {:label :kick  :score 0.8}
-                hat   {:label :hat   :score 0.3}
-                snare {:label :snare :score 0.4}
-                bass  {:label :bass  :score 0.6}]
-               (edge "ROOT" (node :label :net) :label :net)
-               (edge "ROOT" music :label :music)
-               (edge music synths :label :synths)
-               (edge synths bass :label :synth)
-               (edge synths hat  :label :synth)
-               (edge synths kick :label :synth)
-               (edge synths snare :label :synth)))
+        [jiraph graph]
+        test-utils))
 
 ; (path [synth [:music :synths :synth]]
 ;   synth)
 (defn traverse-base []
-  (let [p1 (param-op (uuid))
+  (let [p1 (parameter-op (uuid))
         r1 (receive-op (uuid))
         t1 (traverse-op (uuid) r1 (:id p1) :music)
         j1 (join-op (uuid) p1 t1)
@@ -46,8 +28,8 @@
 (defn result [q]
   (channel-seq (get-in q [:proj :out])))
 
-(deftest param-op-test []
-  (let [p-op (param-op (uuid))
+(deftest parameter-op-test []
+  (let [p-op (parameter-op (uuid))
         id (:id p-op)]
     (enqueue (:in p-op) 42)
     (let [[a b] (take 2 (lazy-channel-seq (:out p-op)))]
@@ -156,12 +138,6 @@
   (let [tree (traverse-base)
         {:keys [t2 j3]} tree]
     (operator-deps j3 (:id t2))))
-
-(defn test-fixture [f]
-  (with-graph G
-    (clear-graph)
-    (test-graph)
-    (f)))
 
 (use-fixtures :once test-fixture)
 

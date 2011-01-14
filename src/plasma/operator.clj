@@ -2,21 +2,32 @@
   (:use plasma.core
         [jiraph graph]
         [lamina core])
-  (:require [clojure (zip :as zip)]))
+  (:require [clojure (zip :as zip)]
+            [logjam.core :as log]))
 
-(def *debug* true)
+(log/channel :op :debug)
+
+(def op-branch-map
+  {:project   true
+   :aggregate true
+   :join      true
+   :traverse  false
+   :parameter false
+   :receive   false
+   :send      true
+   :select    true})
 
 (defn operator-deps-zip [root end-op-id]
   (zip/zipper
     (fn branch? [op]
       (case (:type op)
-        ::project true
-        ::aggregate true
-        ::join true
-        ::traverse false
-        ::parameter false
-        ::receive false
-        ::send true))
+        :project true
+        :aggregate true
+        :join true
+        :traverse false
+        :parameter false
+        :receive false
+        :send true))
 
     (fn children [op]
       (let [{:keys [left right id]} op]
@@ -27,7 +38,7 @@
             ;       (recv-op right-id)
             ;       (:right op))]
         (cond
-;          (= ::receive (:type right)) [right]
+;          (= :receive (:type right)) [right]
           (= end-op-id id) []
           (and left right) [left right]
           :else [left])))
@@ -43,7 +54,7 @@
   [root end-id]
   (loop [loc (operator-deps-zip root end-id)]
     (let [op-node (zip/node loc)]
-      (println "op: " (:type op-node) " id: " (:id op-node))
+      ;(println "op: " (:type op-node) " id: " (:id op-node))
       (if (zip/end? loc)
         (zip/root loc)
         (recur (zip/next loc))))))
@@ -56,7 +67,7 @@
   (let [sub-query (build-sub-query root end-id)]
     (forward-sub-query sub-query)))
 
-(defn param-op
+(defn parameter-op
   "An operator designed to accept a query parameter.  Forwards the
   parameter value to its output channel followed by nil, to signify
   that this was the last value."
@@ -65,9 +76,10 @@
         out (channel)]
     (receive-all in
       (fn [val]
+        (log/to :op "[param] " param-name " => " val)
         (enqueue out {id val})
         (enqueue out nil)))
-  {:type ::parameter
+  {:type :parameter
    :id id
    :in in
    :out out
@@ -79,7 +91,7 @@
   (let [in (channel)
         out (channel)
         sub-query-count (atom 0)]
-  {:type ::receive
+  {:type :receive
    :id id
    :in in
    :out out}))
@@ -94,7 +106,7 @@
   (let [left-out (:out left)]
     (receive-all left-out
       (fn [oa] (enqueue dest oa)))
-  {:type ::send
+  {:type :send
    :id id
    :dest dest}))
 
@@ -120,7 +132,7 @@
                 ;(println "traverse - out: " tgt)
                 (enqueue out (assoc oa id tgt)))
               (enqueue out nil))))))
-    {:type ::traverse
+    {:type :traverse
      :id id
      :src-key src-key
      :edge-predicate edge-predicate
@@ -137,14 +149,13 @@
         out				(channel)]
     (receive-all left-out
       (fn [oa]
-        ;(println "join - left-out: " oa)
         (when oa
           (enqueue right-in oa))))
     (receive-all right-out
       (fn [oa]
-        ;(println "join - right-out: " oa)
+        (log/to :op "[join] out: " oa)
 				(enqueue out oa)))
-    {:type ::join
+    {:type :join
      :id id
      :left left
      :right right
@@ -164,13 +175,12 @@
 				agg-fn (or agg-fn identity)]
     (receive-all left-out
       (fn [oa]
-				;(println "aggregate: " oa "\nagg-fn: " agg-fn)
         (cond
           (nil? oa) (let [aggregated (agg-fn (channel-seq buf))]
                       (doseq [item aggregated]
                         (enqueue out item)))
           :else (enqueue buf oa))))
-    {:type ::aggregate
+    {:type :aggregate
      :id id
      :left left
      :buffer buf
@@ -227,7 +237,7 @@
                  [(apply max-key key-fn arg-seq)])]
     (aggregate-op left max-fn)))
 
-(defn do-predicate [node-id predicate]
+(defn- do-predicate [node-id predicate]
   (let [node (find-node node-id)
         prop (get node (:property predicate))
         op (ns-resolve *ns* (:operator predicate))
@@ -235,7 +245,7 @@
       result))
 
 ; Expects a predicate in the form of:
-; {:type ::predicate
+; {:type :predicate
 ;  :property :score
 ;  :value 0.5
 ;  :operator '>}
@@ -252,7 +262,7 @@
 			    (enqueue out oa)
 			    (if (do-predicate (get oa select-key) predicate)
 				    (enqueue out oa)))))
-    {:type ::select
+    {:type :select
      :id id
      :select-key select-key
      :predicate predicate
@@ -267,9 +277,12 @@
         out (channel)]
     (receive-all left-out
       (fn [oa]
+        (log/to :op "project: " oa)
         (when oa
-					(enqueue out (get oa project-key)))))
-    {:type ::project
+					(enqueue out (get oa project-key)))
+        (if (nil? oa)
+          (close out))))
+    {:type :project
      :id id
      :project-key project-key
      :left left
@@ -283,7 +296,7 @@
 	[id left n]
   (let [left-out (:out left)
         out (take* n left-out)]
-    {:type ::limit
+    {:type :limit
      :id id
      :left left
      :out out}))
