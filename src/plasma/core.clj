@@ -1,10 +1,10 @@
 (ns plasma.core
-  (:use 
+  (:use
     [lamina core]
     [aleph tcp formats]
     [jiraph graph]))
 
-(def ROOT-ID "ROOT")
+(def ROOT-ID "UUID:ROOT")
 
 (def DB-PATH "db")
 (def *current-query* nil)
@@ -70,7 +70,7 @@
 
 (defn edge [from to & {:as props}]
   {:pre [(contains? props :label)]}
-  (append-node! :graph from 
+  (append-node! :graph from
     {:edges {to props}}))
 
 (defn get-edges [node & [pred]]

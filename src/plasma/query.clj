@@ -2,7 +2,10 @@
   (:use [plasma core operator]
         [jiraph graph]
         [lamina core])
-  (:require [clojure (zip :as zip)]))
+  (:require [clojure (zip :as zip)]
+            [logjam.core :as log]))
+
+(log/channel :query)
 
 (defn where-form [body]
   (let [where? #(and (list? %) (= 'where (first %)))
@@ -48,13 +51,13 @@
   [op & args]
   {:type op
    :id (uuid)
-   :args args})
+   :args (vec args)})
 
 (defn- path-start
   "Determines the starting operator for a single path component,
   returning the start-op and rest of the path."
   [{:keys [pbind ops] :as plan} start path]
-  ;(println "path-start: " start " -> " (get pbind start))
+  (log/to :query "path-start: " start " -> " (get pbind start))
   (cond
     ; path starting with a keyword means start at the root
     (keyword? start) [(plan-op :parameter ROOT-ID) path]
@@ -69,13 +72,13 @@
 (defn- path-plan
   "Creates the query-plan operator tree to implement a path traversal."
   [start path]
-  ;(println "start: " start)
+  (log/to :query "start: " start)
   (let [start-id (:id start)]
     (loop [root-id start-id
            src-id  start-id
            path path
            ops {start-id start}]
-      ;(println "ops: " (map :op (vals ops)))
+      (log/to :query "ops: " (map :op (vals ops)))
       (if path
         (let [trav (plan-op :traverse src-id (first path))
               t-id (:id trav)
@@ -92,14 +95,14 @@
   adds the traversal to the plan.
   "
   [plan [bind-name path]]
-  ;(println "path: " path)
-;  (println "ops: " (map :op (vals (:ops plan))))
+  (log/to :query "path: " path)
+;  (log/to :query "ops: " (map :op (vals (:ops plan))))
   (let [start (first path)
         [query-root path] (path-start plan start path)
         [root-op-id path-ops] (path-plan query-root path)
         root-op (get path-ops root-op-id)
         ops (merge (:ops plan) path-ops)
-        _ (println "root-op: " root-op)
+        _ (log/to :query "root-op: " root-op)
         bind-op (if (= :join (:type root-op))
                   (second (:args root-op))
                   (:id root-op))
@@ -131,7 +134,7 @@
                                      pred-seq)) preds))]
     (reduce
       (fn [plan [binding pred]]
-        (println "pred: " pred)
+        (log/to :query "pred: " pred)
         (let [select-key (get-in plan [:pbind binding])
               op (plan-op :select (:root plan) select-key pred)]
           (assoc-in (assoc plan :root (:id op))
@@ -149,7 +152,7 @@
                  (get params res-sym)
                  (second (first params)))
         result-op (get (:ops plan) res-id)
-        _ (println "res-op: " result-op)
+        _ (log/to :query "res-op: " result-op)
         proj-op (plan-op :project (:root plan) res-id)
         ops (assoc (:ops plan) (:id proj-op) proj-op)]
     (assoc plan
@@ -160,7 +163,7 @@
   "Add the parameter map for a query."
   [plan]
   (let [param-ops (filter #(= :parameter (:type %)) (vals (:ops plan)))
-        ;_ (println "param-ops: " param-ops)
+        ;_ (log/to :query "param-ops: " param-ops)
         param-map (reduce (fn [mem op]
                             (assoc mem
                                    (first (:args op)) (:id op)))
@@ -186,10 +189,10 @@
                      (Exception.
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
-        paths (partition 2 bindings)
+        paths (vec (map vec (partition 2 bindings)))
         trav-tree (traversal-tree paths)
         preds (where->predicates (where-form body))
-        plan (merge {:type ::path
+        plan (merge {:type :path-query
                      :paths paths
                      :filters preds}
                     trav-tree)
@@ -197,6 +200,11 @@
         plan (projection plan body)
         plan (parameterized plan)]
     plan))
+
+(defn query?
+  [q]
+  (and (associative? q)
+       (= :path-query (:type q))))
 
 (defmacro path [& args]
   `(path* (quote ~args)))
@@ -244,7 +252,7 @@
   "Check whether an operator's child operators have been instantiated if it has children, 
   to see whether it is ready to be instantiated."
   [plan op]
-  (let [child-ids (filter uuid? (:args op))]
+  (let [child-ids (filter #(and (uuid? %) (not= ROOT-ID %)) (:args op))]
     (if (empty? child-ids)
       true
       (every? #(contains? plan %) child-ids))))
@@ -257,8 +265,11 @@
          ops (set (keys (:ops plan)))]
     (if (empty? ops)
       tree
-      (let [op-id (first (filter #(ready-op? tree (get (:ops plan) %)) ops))
+      (let [_ (log/to :op "ops-count: " (count (:ops plan)))
+            op-id (first (filter #(ready-op? tree (get (:ops plan) %)) ops))
+            _ (log/to :op "build-query op-id: " op-id)
             op (get (:ops plan) op-id)
+            _ (log/to :op "build-query op: " op)
             tree (assoc tree (:id op)
                         (op-node tree op))]
         (if (nil? op)
@@ -291,6 +302,8 @@
 
 (defn query
   [plan & [param-map]]
+  (log/to :op "query: " plan)
+  (assert (query? plan))
   (let [tree (query-tree plan)
         param-map (or param-map {})]
     (run-query tree param-map)

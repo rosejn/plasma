@@ -54,7 +54,7 @@
   [root end-id]
   (loop [loc (operator-deps-zip root end-id)]
     (let [op-node (zip/node loc)]
-      ;(println "op: " (:type op-node) " id: " (:id op-node))
+      (log/to :op "op: " (:type op-node) " id: " (:id op-node))
       (if (zip/end? loc)
         (zip/root loc)
         (recur (zip/next loc))))))
@@ -122,14 +122,14 @@
                        edge-predicate)]
     (receive-all in
       (fn [oa]
-        ;(println "traverse " (get oa src-key) "-" edge-predicate "-> " (count (get-edges :graph (get oa src-key))))
+        (log/to :op "traverse " (get oa src-key) "-" edge-predicate "-> " (count (get-edges :graph (get oa src-key))))
         (let [uuid (get oa src-key)]
           (if (proxy-node? uuid)
             (remote-query recv id)
             (let [edges (get-edges uuid edge-pred-fn)
                   tgts (keys edges)]
               (doseq [tgt tgts]
-                ;(println "traverse - out: " tgt)
+                (log/to :op "traverse - out: " tgt)
                 (enqueue out (assoc oa id tgt)))
               (enqueue out nil))))))
     {:type :traverse

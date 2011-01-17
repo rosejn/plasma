@@ -8,15 +8,15 @@
   {:graph (layer "test/db")})
 
 (defn test-graph []
-  (node "ROOT" :label :self)
+  (node ROOT-ID :label :self)
   (with-nodes! [music :music
                 synths :synths
                 kick  {:label :kick  :score 0.8}
                 hat   {:label :hat   :score 0.3}
                 snare {:label :snare :score 0.4}
                 bass  {:label :bass  :score 0.6}]
-               (edge "ROOT" (node :label :net) :label :net)
-               (edge "ROOT" music :label :music)
+               (edge ROOT-ID (node :label :net) :label :net)
+               (edge ROOT-ID music :label :music)
                (edge music synths :label :synths)
                (edge synths bass :label :synth)
                (edge synths hat  :label :synth)
@@ -28,4 +28,3 @@
     (clear-graph)
     (test-graph)
     (f)))
-
