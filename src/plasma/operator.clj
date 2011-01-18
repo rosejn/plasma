@@ -17,53 +17,54 @@
    :send      true
    :select    true})
 
-(defn operator-deps-zip [root end-op-id]
-  (zip/zipper
-    (fn branch? [op]
-      (case (:type op)
-        :project true
-        :aggregate true
-        :join true
-        :traverse false
-        :parameter false
-        :receive false
-        :send true))
+(defn operator-deps-zip [plan end-op-id]
+  (let [ops (:ops plan)]
+    (zip/zipper
+      (fn branch? [op-id]
+        (if (= end-op-id op-id)
+          false
+          (get op-branch-map (:type (get ops op-id)))))
 
-    (fn children [op]
-      (let [{:keys [left right id]} op]
-            ;left (if (= end-op-id left-id)
-            ;       (recv-op left-id)
-            ;       (:left op))
-            ;right (if (= end-op-id right-id)
-            ;       (recv-op right-id)
-            ;       (:right op))]
-        (cond
-;          (= :receive (:type right)) [right]
-          (= end-op-id id) []
-          (and left right) [left right]
-          :else [left])))
+      (fn children [op-id]
+        (if (= end-op-id op-id)
+          []
+          (let [op (get ops op-id)
+                {:keys [type args]} op]
+            (case type 
+              :project [(first args)]
+              :aggregate [(first args)]
+              :join [(second args) (first args)]
+              :send [(first args)]
+              :select [(first args)]))))
 
-    (fn make-op [op [left right]]
-      (assoc op :left left :right right))
+      (fn make-op [op args]
+        (assoc op :args args))
 
-    root))
+      (:root plan))))
 
-(defn operator-deps
-  "Return the operator tree from the root out to the end-id,
+(defn sub-query-ops
+  "Returns the operator tree from the root out to the end-id,
   and no further."
-  [root end-id]
-  (loop [loc (operator-deps-zip root end-id)]
-    (let [op-node (zip/node loc)]
-      (log/to :op "op: " (:type op-node) " id: " (:id op-node))
-      (if (zip/end? loc)
-        (zip/root loc)
-        (recur (zip/next loc))))))
+  [plan end-node-id]
+  (let [ops (:ops plan)]
+    (loop [loc (operator-deps-zip plan end-node-id)
+           sub-query-ops {}]
+      (let [op-id (zip/node loc)
+            op-node (get ops op-id)]
+        (log/to :op (:id op-node) ;(:args op-node) 
+                "\nop: " (:type op-node))
+        (if (or (= end-node-id op-id)
+                (zip/end? loc))
+          sub-query-ops
+          (recur (zip/next loc)
+                 (assoc sub-query-ops op-id op-node)))))))
 
 (defn forward-sub-query [q])
 
-(defn build-sub-query [root end-id])
+(defn build-sub-query [plan end-node-id]
+  (assoc plan :ops (sub-query-ops plan end-node-id)))
 
-(defn remote-query [root end-id]
+(comment defn remote-query [root end-id]
   (let [sub-query (build-sub-query root end-id)]
     (forward-sub-query sub-query)))
 
@@ -86,11 +87,13 @@
    :name param-name}))
 
 (defn receive-op
-  "A receive operator to accept values from remote query processors."
-  [id]
+  "A receive operator to merge values from local query processing and
+  remote query results."
+  [id left]
   (let [in (channel)
-        out (channel)
-        sub-query-count (atom 0)]
+        out (channel)]
+    (siphon (:out left) out)
+    (siphon in out)
   {:type :receive
    :id id
    :in in
@@ -101,14 +104,13 @@
 
 (defn send-op
   "A send operator to forward values over the network to a waiting
-  receive operator."
+  receive operator.  Takes a left input operator and a destination network
+  channel."
   [id left dest]
-  (let [left-out (:out left)]
-    (receive-all left-out
-      (fn [oa] (enqueue dest oa)))
+  (siphon (:out left) dest)
   {:type :send
    :id id
-   :dest dest}))
+   :dest dest})
 
 (defn traverse-op
 	"Uses the src-key to lookup a node ID from each OA in the in queue.
@@ -125,7 +127,7 @@
         (log/to :op "traverse " (get oa src-key) "-" edge-predicate "-> " (count (get-edges :graph (get oa src-key))))
         (let [uuid (get oa src-key)]
           (if (proxy-node? uuid)
-            (remote-query recv id)
+            nil ; TODO: Initiate remote query here... (remote-query recv id)
             (let [edges (get-edges uuid edge-pred-fn)
                   tgts (keys edges)]
               (doseq [tgt tgts]

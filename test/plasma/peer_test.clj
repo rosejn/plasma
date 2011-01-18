@@ -34,4 +34,3 @@
       (finally
         (peer-close p1)))))
 
-

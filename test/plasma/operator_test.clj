@@ -7,22 +7,26 @@
 
 ; (path [synth [:music :synths :synth]]
 ;   synth)
+;   TODO: Don't pass nil to traverse-op, instead we need a way to pass the
+;   query envelope so remote-sub queries can be hooked up to running operator
+;   tree.
 (defn traverse-base []
   (let [p1 (parameter-op (uuid))
-        r1 (receive-op (uuid))
-        t1 (traverse-op (uuid) r1 (:id p1) :music)
+        t1 (traverse-op (uuid) nil (:id p1) :music)
         j1 (join-op (uuid) p1 t1)
-        t2 (traverse-op (uuid) r1 (:id t1) :synths)
+        t2 (traverse-op (uuid) nil (:id t1) :synths)
         j2 (join-op (uuid) j1 t2)
-        t3 (traverse-op (uuid) r1 (:id t2) :synth)
+        t3 (traverse-op (uuid) nil (:id t2) :synth)
         j3 (join-op (uuid) j2 t3)
+        r1 (receive-op (uuid) j3)
         tree {:p1 p1
               :t1 t1
               :j1 j1
               :t2 t2
               :j2 j2
               :t3 t3
-              :j3 j3}]
+              :j3 j3
+              :r1 r1}]
     tree))
 
 (defn result [q]
@@ -38,13 +42,13 @@
 
 (deftest aggregate-op-test []
   (let [tree (traverse-base)
-        {:keys [p1 j3 t3]} tree
-        agg  (aggregate-op (uuid) j3)
+        {:keys [p1 r1 t3]} tree
+        agg  (aggregate-op (uuid) r1)
         proj (project-op (uuid) agg (:id t3))
         tree (assoc tree
               :agg agg
               :proj proj)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (is (= #{:kick :bass :snare :hat}
            (set (map #(:label (find-node %)) (result tree)))))))
 
@@ -60,7 +64,7 @@
         s-asc (sort-op (uuid) j3 (:id t3) :score :asc)
         proj-asc (project-op (uuid) s-asc (:id t3))
         tree-asc (assoc tree :proj proj-asc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick :bass :snare :hat)
            (map #(:label (find-node %)) (result tree-desc))))
@@ -73,7 +77,7 @@
         min-desc (min-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) min-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:hat)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -84,7 +88,7 @@
         max-desc (max-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) max-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -95,7 +99,7 @@
         limit-desc (limit-op (uuid) j3 2)
         proj-desc (project-op (uuid) limit-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= 2 (count (map #(:label (find-node %)) (result tree-desc)))))))
 
@@ -108,10 +112,9 @@
         choose-desc (choose-op (uuid) j3 2)
         proj-desc (project-op (uuid) choose-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (let [res (map #(:label (find-node %)) (result tree-desc))]
-      ;(println "res: " res)
       (is (= 2 (count res))))))
 
 
@@ -129,12 +132,12 @@
         tree (assoc tree
               :sel sel
               :proj proj)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
 
-(defn sub-query-test []
+(comment defn sub-query-test []
   (let [tree (traverse-base)
         {:keys [t2 j3]} tree]
     (operator-deps j3 (:id t2))))
@@ -147,7 +150,7 @@
         avg-desc (avg-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) avg-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) "ROOT")
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))

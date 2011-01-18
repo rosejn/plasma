@@ -36,16 +36,22 @@
 
    Where forms are structured like so:
     (where (op val (:property bind-name)))
+
+  For example, query for the tracks with a score greater than 0.8:
+    (path [track [:music :tracks]]
+      (where (> (:score track) 0.8)))
+
   "
-  [form]
-  (let [pred-list (map where-predicate (next form))]
-    (reduce (fn [pred-map pred]
-              (assoc pred-map
-                     (:binding pred)
-                     (conj (get pred-map (:binding pred))
-                           (dissoc pred :binding))))
-            {}
-            pred-list)))
+  [plan form]
+  (let [pred-list (map where-predicate (next form))
+        predicates (reduce (fn [pred-map pred]
+                             (assoc pred-map
+                                    (:binding pred)
+                                    (conj (get pred-map (:binding pred))
+                                          (dissoc pred :binding))))
+                           {}
+                           pred-list)]
+    (assoc plan :filters predicates)))
 
 (defn- plan-op
   [op & args]
@@ -118,16 +124,15 @@
 
   input: [(a [:foo :bar])
           (b [a :baz :zam])]"
-  [paths]
-  (reduce traversal-path
-          {:ops {} :pbind {} :root nil :params {}}
-          paths))
+  [plan paths]
+  (reduce traversal-path plan paths))
 
 (defn- selection-ops
   "Add the selection operators corresponding to a set of predicates
   to a query plan."
-  [plan preds]
-  (let [; flatten with binding name because each bind-point could
+  [plan]
+  (let [preds (:filters plan)
+        ; flatten with binding name because each bind-point could
         ; have more than one predicate attached (and ...)
         flat-preds (partition 2 (mapcat (fn [[bind pred-seq]]
                          (interleave (repeat bind)
@@ -171,6 +176,14 @@
                           param-ops)]
     (assoc plan :params param-map)))
 
+(defn- plan-receiver
+  [plan]
+  (let [op (plan-op :receive (:root plan)) 
+        ops (assoc (:ops plan) (:id op) op)]
+    (assoc plan
+           :ops ops
+           :root (:id op))))
+
 (defn path*
   "Helper function to 'parse' a path expression and generate an initial
   query plan."
@@ -190,24 +203,28 @@
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
         paths (vec (map vec (partition 2 bindings)))
-        trav-tree (traversal-tree paths)
-        preds (where->predicates (where-form body))
-        plan (merge {:type :path-query
-                     :paths paths
-                     :filters preds}
-                    trav-tree)
-        plan (selection-ops plan preds)
-        plan (projection plan body)
-        plan (parameterized plan)]
-    plan))
+        plan {:type :plasma-plan
+              :root nil    ; root operator id
+              :params {}   ; param-name -> parameter-op
+              :ops {}      ; id         -> operator
+              :filters {}  ; binding    -> predicate
+              :pbind {}    ; symbol     -> traversal       (path binding) 
+              }]
+    (-> plan
+      (traversal-tree paths)
+      (where->predicates (where-form body))
+      (plan-receiver)
+      (selection-ops)
+      (projection body)
+      (parameterized))))
+
+(defmacro path [& args]
+  `(path* (quote ~args)))
 
 (defn query?
   [q]
   (and (associative? q)
-       (= :path-query (:type q))))
-
-(defmacro path [& args]
-  `(path* (quote ~args)))
+       (= :plasma-plan (:type q))))
 
 (defn optimize-query-plan
   [plan]
@@ -216,7 +233,7 @@
 ; TODO: Deal with nil receive op...
 (defn- op-node
   "Instantiate an operator node based on a query node."
-  [plan op-node]
+  [ops op-node]
   (let [{:keys [type id args]} op-node
         op-name (symbol (str (name type) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
@@ -225,26 +242,26 @@
       (apply op-fn id nil args)
 
       :join
-      (apply op-fn id (map plan args))
+      (apply op-fn id (map ops args))
 
       :parameter
       (apply op-fn id args)
 
       :project
-      (op-fn id (get plan (first args)) (second args))
+      (op-fn id (get ops (first args)) (second args))
 
       :aggregate
-      (apply op-fn id (map #(get plan %) args))
+      (apply op-fn id (map #(get ops %) args))
 
       :receive
-      (op-fn id)
+      (op-fn id (get ops (first args)))
 
       :send
       (op-fn id)
 
       :select
       (let [[left skey pred] args
-            left (get plan left)]
+            left (get ops left)]
         (op-fn id left skey pred))
     )))
 
