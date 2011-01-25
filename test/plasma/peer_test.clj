@@ -27,10 +27,14 @@
     (try
       (init-peer p1)
       (let [con (peer-connection "localhost" port)]
-        (is (= "pong" (wait-for-message (remote-query con "ping") 1000)))
+        (is (= :pong (wait-for-message (remote-query con :ping) 1000)))
         (is (= :self (:label (wait-for-message (remote-query con ROOT-ID) 1000))))
-        (is (= 4 (count (wait-for-message (remote-query con (path [:music :synths :synth])) 1000))))
-        (println "result: " (wait-for-message (remote-query con (path [:music :synths :synth])) 1000)))
+        (let [res (wait-for-message (remote-query con (path [synth [:music :synths :synth]]
+                                                            (where (>= (:score synth) 0.6)))) 1000)]
+          (is (= 2 (count res)))
+          (is (= #{:bass :kick} (set (map :label 
+                                          (map #(wait-for-message (remote-query con %)) 
+                                               res)))))))
       (finally
         (peer-close p1)))))
 

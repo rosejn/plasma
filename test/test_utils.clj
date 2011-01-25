@@ -8,7 +8,7 @@
   {:graph (layer "test/db")})
 
 (defn test-graph []
-  (node ROOT-ID :label :self)
+  (node ROOT-ID :label "self")
   (with-nodes! [music :music
                 synths :synths
                 kick  {:label :kick  :score 0.8}
