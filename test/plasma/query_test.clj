@@ -12,19 +12,25 @@
         tree (query-tree plan)]
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
-           (set (map #(:label (find-node %)) 
+           (set (map #(:label (find-node %))
                      (query (path [:music :synths :synth]))))))))
 
 (deftest path-query-test
   (is (= #{:kick :bass :snare :hat}
-         (set (map #(:label (find-node %)) 
+         (set (map #(:label (find-node %))
                    (query (path [:music :synths :synth])))))))
 
 (deftest where-query-test
   (is (= #{:kick :bass :snare}
-         (set (map #(:label (find-node %)) 
+         (set (map #(:label (find-node %))
                    (query (path [s [:music :synths :synth]]
-                                (where (> (:score s) 0.3)))))))))
-
+                                (where (> (:score s) 0.3))))))))
+  (let [p (path [sesh [:sessions :session]
+                 synth [sesh :synth]]
+                (where (= (:label synth) :kick))
+                sesh)]
+    (is (= #{:red-pill :take-six}
+           (set (map #(:label (find-node %))
+                     (query p)))))))
 
 (use-fixtures :once test-fixture)

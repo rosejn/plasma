@@ -3,7 +3,8 @@
         [clojure test stacktrace]
         [lamina core]
         [jiraph graph]
-        test-utils))
+        test-utils)
+  (:require [logjam.core :as log]))
 
 ; (path [synth [:music :synths :synth]]
 ;   synth)

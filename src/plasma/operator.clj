@@ -5,6 +5,12 @@
   (:require [clojure (zip :as zip)]
             [logjam.core :as log]))
 
+; Query operators work on path tuples (PTs), which are maps representing a
+; traversal from one start node to one end node, with zero or more intermediate
+; nodes in between and no branching.  Each slot in a PT map has as its key the
+; ID of the operator that placed it into the PT and as its value the UUID of
+; a graph node.
+
 (log/channel :op :debug)
 
 (def op-branch-map
@@ -13,7 +19,7 @@
    :join      true
    :traverse  false
    :parameter false
-   :receive   false
+   :receive   true
    :send      true
    :select    true})
 
@@ -30,7 +36,7 @@
           []
           (let [op (get ops op-id)
                 {:keys [type args]} op]
-            (case type 
+            (case type
               :project [(first args)]
               :aggregate [(first args)]
               :join [(second args) (first args)]
@@ -51,7 +57,7 @@
            sub-query-ops {}]
       (let [op-id (zip/node loc)
             op-node (get ops op-id)]
-        (log/to :op (:id op-node) ;(:args op-node) 
+        (log/to :op (:id op-node) ;(:args op-node)
                 "\nop: " (:type op-node))
         (if (or (= end-node-id op-id)
                 (zip/end? loc))
@@ -70,7 +76,7 @@
 
 (defn parameter-op
   "An operator designed to accept a query parameter.  Forwards the
-  parameter value to its output channel followed by nil, to signify
+  parameter value to its output channel and then closes it to signify
   that this was the last value."
   [id & [param-name]]
   (let [in (channel)
@@ -78,22 +84,32 @@
     (receive-all in
       (fn [val]
         (log/to :op "[param] " param-name " => " val)
-        (enqueue out {id val})
-        (enqueue out nil)))
+        (enqueue-and-close out {id val})))
   {:type :parameter
    :id id
    :in in
    :out out
    :name param-name}))
 
+; TODO: Need to register remote queries so we can close only after all
+; results have been received or a timeout has occurred.
 (defn receive-op
   "A receive operator to merge values from local query processing and
   remote query results."
   [id left]
   (let [in (channel)
-        out (channel)]
-    (siphon (:out left) out)
+        out (channel)
+        left-out (:out left)]
+    (siphon left-out out)
+    (on-closed left-out #(do
+                           (log/to :op "[receive] closed...")
+                           (close out)))
+    
     (siphon in out)
+    (on-closed in #(do
+                     (log/to :op "[receive] closed...")
+                     (close out)))
+    
   {:type :receive
    :id id
    :in in
@@ -113,9 +129,9 @@
    :dest dest})
 
 (defn traverse-op
-	"Uses the src-key to lookup a node ID from each OA in the in queue.
+	"Uses the src-key to lookup a node ID from each PT in the in queue.
  For each source node traverse the edges passing the edge-predicate, and put
- target nodes into OAs on out channel."
+ target nodes into PTs on out channel."
 	[id recv src-key edge-predicate]
   (let [in  (channel)
         out (channel)
@@ -123,17 +139,24 @@
                        #(= edge-predicate (:label %1))
                        edge-predicate)]
     (receive-all in
-      (fn [oa]
-        (log/to :op "traverse " (get oa src-key) "-" edge-predicate "-> " (count (get-edges :graph (get oa src-key))))
-        (let [uuid (get oa src-key)]
-          (if (proxy-node? uuid)
-            nil ; TODO: Initiate remote query here... (remote-query recv id)
-            (let [edges (get-edges uuid edge-pred-fn)
-                  tgts (keys edges)]
-              (doseq [tgt tgts]
-                (log/to :op "traverse - out: " tgt)
-                (enqueue out (assoc oa id tgt)))
-              (enqueue out nil))))))
+      (fn [pt]
+        (when pt
+          (let [src-id (get pt src-key)]
+            ;(log/to :op "[traverse] in:" pt)
+            (log/to :op "[traverse] src: " src-id " - " edge-predicate " -> "
+                    (count (get-edges src-id edge-pred-fn)) " edges")
+            (if (proxy-node? src-id)
+              nil ; TODO: Initiate remote query here... (remote-query recv id)
+              (let [edges (get-edges src-id edge-pred-fn)
+                    tgts (keys edges)
+                    path-tuples (map #(assoc pt id %) tgts)]
+                (doseq [path-tuple path-tuples]
+                  (log/to :op "[traverse] out: " (get path-tuple id))
+                  (enqueue out path-tuple))))))))
+
+    (on-closed in #(do
+                     (log/to :op "[traverse] closed")
+                     (close out)))
     {:type :traverse
      :id id
      :src-key src-key
@@ -142,21 +165,20 @@
      :out out}))
 
 (defn join-op
-  "For each OA received from the left operator, gets all successive OAs from
+  "For each PT received from the left operator, gets all successive PTs from
   the right operator."
   [id left right]
   (let [left-out  (:out left)
         right-in  (:in right)
         right-out (:out right)
         out				(channel)]
-    (receive-all left-out
-      (fn [oa]
-        (when oa
-          (enqueue right-in oa))))
-    (receive-all right-out
-      (fn [oa]
-        (log/to :op "[join] out: " oa)
-				(enqueue out oa)))
+    (siphon left-out right-in)
+    (on-closed left-out #(close right-in))
+
+    (siphon right-out out)
+    (on-closed right-out #(do
+                            (log/to :op "[join] closed")
+                            (close out)))
     {:type :join
      :id id
      :left left
@@ -164,24 +186,26 @@
      :out out}))
 
 (defn aggregate-op
-  "Puts all incoming OAs into a buffer queue, and then on receiving nil
-  dumps the whole buffer queue into the output queue.
+  "Puts all incoming PTs into a buffer queue, and then when the input channel
+  is closed dumps the whole buffer queue into the output queue.
 
   If an aggregate function, agg-fn, is passed then it will be called and
-  passed a seq of all the OAs, and it's result will be sent to the output
+  passed a seq of all the PTs, and it's result will be sent to the output
   channel."
   [id left & [agg-fn]]
   (let [left-out (:out left)
         buf (channel)
         out (channel)
 				agg-fn (or agg-fn identity)]
-    (receive-all left-out
-      (fn [oa]
-        (cond
-          (nil? oa) (let [aggregated (agg-fn (channel-seq buf))]
-                      (doseq [item aggregated]
-                        (enqueue out item)))
-          :else (enqueue buf oa))))
+    (siphon left-out buf)
+    (on-closed left-out
+      (fn []
+        (let [aggregated (agg-fn (channel-seq buf))]
+          (log/to :op "[aggregate] count: " (count aggregated))
+          (doseq [item aggregated]
+            (enqueue out item)))
+        (log/to :op "[aggregate] closed")
+        (close out)))
     {:type :aggregate
      :id id
      :left left
@@ -202,7 +226,7 @@
 	(aggregate-op id left sort-fn)))
 
 (defn min-op
-  "Aggregates the input and returns the OA with the minimum value (numerical)
+  "Aggregates the input and returns the PT with the minimum value (numerical)
   corresponding to the min-prop property."
   [id left minimum-key min-prop]
   (let [key-fn (fn [oa]
@@ -214,7 +238,7 @@
     (aggregate-op id left min-fn)))
 
 (defn max-op
-  "Aggregates the input and returns the OA with the maximum value (numerical)
+  "Aggregates the input and returns the PT with the maximum value (numerical)
   corresponding to the max-prop property."
   [id left maximum-key min-prop]
   (let [key-fn (fn [oa]
@@ -226,7 +250,7 @@
     (aggregate-op id left max-fn)))
 
 ; TODO: Determine if this really makes sense to include, since it
-; returns a value rather than an OA like all the other operators...
+; returns a value rather than an PT like all the other operators...
 (comment defn avg-op
   "Aggregates the input and returns the average value (numerical)
   corresponding to the avg-prop property."
@@ -244,6 +268,7 @@
         prop (get node (:property predicate))
         op (ns-resolve *ns* (:operator predicate))
         result (op prop (:value predicate))]
+    (log/to :op "[do-predicate] prop: " prop " op: " op "result: " result)
       result))
 
 ; Expects a predicate in the form of:
@@ -252,18 +277,22 @@
 ;  :value 0.5
 ;  :operator '>}
 (defn select-op
-  "Performs a selection by accepting only the OAs for which the
+  "Performs a selection by accepting only the PTs for which the
   value for the select-key results in true when passed to the
   selection predicate."
   [id left select-key predicate]
   (let [left-out (:out left)
         out      (channel)]
-		(receive-all left-out
-		  (fn [oa]
-			  (if (nil? oa)
-			    (enqueue out oa)
-			    (if (do-predicate (get oa select-key) predicate)
-				    (enqueue out oa)))))
+    (siphon (filter* #(do-predicate (get % select-key) predicate) left-out)
+            out)
+    (on-closed left-out #(close out))
+		(comment receive-all left-out
+		  (fn [pt]
+      (log/to :op "[select] pt: " pt)
+			  (if (nil? pt)
+			    (enqueue out pt)
+			    (if (do-predicate (get pt select-key) predicate)
+				    (enqueue out pt)))))
     {:type :select
      :id id
      :select-key select-key
@@ -272,17 +301,21 @@
      :out out}))
 
 (defn project-op
-	"Project will turn a stream of OAs into a stream of node UUIDs.
- Enqueues only the UUID in the OA slot for project-key."
+	"Project will turn a stream of PTs into a stream of node UUIDs.
+ Enqueues only the UUID in the PT slot for project-key."
 	[id left project-key]
   (let [left-out (:out left)
         out (channel)]
-    (receive-all left-out
-      (fn [oa]
-        (log/to :op "project: " oa)
-        (when oa
-					(enqueue out (get oa project-key)))
-        (if (nil? oa)
+    (siphon (map* #(get % project-key) left-out)
+            out)
+    (on-closed left-out #(close out))
+    (comment receive-all left-out
+      (fn [pt]
+        (when pt
+          (log/to :op "[project] out: " (get pt project-key))
+					(enqueue out (get pt project-key)))
+        (when (nil? pt)
+          (log/to :op "[project] got nil!!!!!!!!!!!!!")
           (close out))))
     {:type :project
      :id id
@@ -291,7 +324,7 @@
      :out out}))
 
 (defn limit-op
-	"Forward only the first N input OAs then nil.
+	"Forward only the first N input PTs then nil.
 
  NOTE: Unlike the other operators this operator will only work once
  after instantiation."
@@ -304,8 +337,9 @@
      :out out}))
 
 (defn choose-op
-  "Aggregates the input and returns the n OA's chosen at random."
+  "Aggregates the input and returns the n PT's chosen at random."
   [id left n]
   (let [choose-fn (fn [arg-seq]
                     (take n (shuffle arg-seq)))]
     (aggregate-op id left choose-fn)))
+

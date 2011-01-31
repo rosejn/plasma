@@ -5,7 +5,7 @@
         jiraph.graph)
   (:require [logjam.core :as log]))
 
-(log/channel :peer)
+(log/channel :peer :debug)
 
 (def DEFAULT-PORT 4242)
 

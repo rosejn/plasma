@@ -5,7 +5,7 @@
   (:require [clojure (zip :as zip)]
             [logjam.core :as log]))
 
-(log/channel :query)
+(log/channel :query :debug)
 
 (defn where-form [body]
   (let [where? #(and (list? %) (= 'where (first %)))
@@ -59,32 +59,41 @@
    :id (uuid)
    :args (vec args)})
 
-(defn- path-start
+(defn- path-start-src
   "Determines the starting operator for a single path component,
   returning the start-op and rest of the path."
-  [{:keys [pbind ops] :as plan} start path]
-  (log/to :query "path-start: " start " -> " (get pbind start))
-  (cond
-    ; path starting with a keyword means start at the root
-    (keyword? start) [(plan-op :parameter ROOT-ID) path]
+  [plan jbind path]
+  (let [start (first path)
+        {:keys [pbind ops]} plan]
+    (log/to :query "path-start-src: " start " -> " (get jbind start))
+    (cond
+      ; path starting with a keyword means start at the root
+      (keyword? start)
+      (let [root-op (plan-op :parameter ROOT-ID)]
+        [root-op (:id root-op)])
 
-    ; starting with a symbol, refers to a previous bind point in the query
-    (and (symbol? start)
-         (contains? pbind start)) [(get ops (get pbind start)) (next path)]
+      ; starting with a symbol, refers to a previous bind point in the query
+      (and (symbol? start)
+           (and
+             (contains? jbind start)
+             (contains? pbind start)))
+        [(get ops (get jbind start))
+         (get pbind start)]
 
-    ; starting with the UUID of a node starts at that node"
-    (node-exists? :graph start) [(plan-op :parameter start) (next path)]))
+      ; starting with the UUID of a node starts at that node"
+      (node-exists? :graph start)
+      (let [root-op (plan-op :parameter start)]
+        [root-op (:id root-op)]))))
 
 (defn- path-plan
   "Creates the query-plan operator tree to implement a path traversal."
-  [start path]
-  (log/to :query "start: " start)
-  (let [start-id (:id start)]
-    (loop [root-id start-id
-           src-id  start-id
+  [src-id root-op path]
+  (let [root-id (:id root-op)]
+    (loop [root-id root-id
+           src-id  src-id
            path path
-           ops {start-id start}]
-      (log/to :query "ops: " (map :op (vals ops)))
+           ops {root-id root-op}]
+      (log/to :query "root: " root-id " src: " src-id " path: " path)
       (if path
         (let [trav (plan-op :traverse src-id (first path))
               t-id (:id trav)
@@ -100,22 +109,25 @@
   "Takes a traversal-plan and a single [bind-name [path ... segment]] pair and
   adds the traversal to the plan.
   "
-  [plan [bind-name path]]
+  [[plan jbind] [bind-name path]]
   (log/to :query "path: " path)
 ;  (log/to :query "ops: " (map :op (vals (:ops plan))))
-  (let [start (first path)
-        [query-root path] (path-start plan start path)
-        [root-op-id path-ops] (path-plan query-root path)
-        root-op (get path-ops root-op-id)
-        ops (merge (:ops plan) path-ops)
+  (let [[start-op src-key] (path-start-src plan jbind path)
+        path (if (keyword? (first path))
+               path (next path))
+        [root-op-id path-ops] (path-plan src-key start-op path)
+        root-op               (get path-ops root-op-id)
+        ops                   (merge (:ops plan) path-ops)
         _ (log/to :query "root-op: " root-op)
         bind-op (if (= :join (:type root-op))
                   (second (:args root-op))
                   (:id root-op))
-        plan (assoc-in plan [:pbind bind-name] bind-op)]
-    (assoc plan
+        plan (assoc-in plan [:pbind bind-name] bind-op)
+        jbind (assoc jbind bind-name (:id root-op))]
+    [(assoc plan
            :ops ops
-           :root root-op-id)))
+           :root root-op-id)
+     jbind]))
 
 (defn- traversal-tree
   "Convert a seq of [bind-name [path ... segment]] pairs into a query-plan
@@ -125,7 +137,7 @@
   input: [(a [:foo :bar])
           (b [a :baz :zam])]"
   [plan paths]
-  (reduce traversal-path plan paths))
+  (first (reduce traversal-path [plan {}] paths)))
 
 (defn- selection-ops
   "Add the selection operators corresponding to a set of predicates
@@ -150,6 +162,8 @@
 (defn- projection
   "Add the projection operator node to produce the final result nodes for a query."
   [plan body]
+  (log/to :query "projection (body): " body "\n"
+          (get (:ops plan) (get-in plan [:pbind (last body)])))
   (let [params (:pbind plan)
         res-sym (last body)
         res-id (if (and (symbol? res-sym)
@@ -178,7 +192,7 @@
 
 (defn- plan-receiver
   [plan]
-  (let [op (plan-op :receive (:root plan)) 
+  (let [op (plan-op :receive (:root plan))
         ops (assoc (:ops plan) (:id op) op)]
     (assoc plan
            :ops ops
@@ -208,7 +222,7 @@
               :params {}   ; param-name -> parameter-op
               :ops {}      ; id         -> operator
               :filters {}  ; binding    -> predicate
-              :pbind {}    ; symbol     -> traversal       (path binding) 
+              :pbind {}    ; symbol     -> traversal       (path binding)
               }]
     (-> plan
       (traversal-tree paths)
@@ -266,7 +280,7 @@
     )))
 
 (defn- ready-op?
-  "Check whether an operator's child operators have been instantiated if it has children, 
+  "Check whether an operator's child operators have been instantiated if it has children,
   to see whether it is ready to be instantiated."
   [plan op]
   (let [child-ids (filter #(and (uuid? %) (not= ROOT-ID %)) (:args op))]
@@ -282,11 +296,11 @@
          ops (set (keys (:ops plan)))]
     (if (empty? ops)
       tree
-      (let [_ (log/to :op "ops-count: " (count (:ops plan)))
+      (let [_ (log/to :op-b "ops-count: " (count (:ops plan)))
             op-id (first (filter #(ready-op? tree (get (:ops plan) %)) ops))
-            _ (log/to :op "build-query op-id: " op-id)
+            _ (log/to :op-b "build-query op-id: " op-id)
             op (get (:ops plan) op-id)
-            _ (log/to :op "build-query op: " op)
+            _ (log/to :op-b "build-query op: " op)
             tree (assoc tree (:id op)
                         (op-node tree op))]
         (if (nil? op)
@@ -319,9 +333,10 @@
 
 (defn query
   [plan & [param-map]]
-  (log/to :op "query: " plan)
+  (log/to :op "[QUERY] ------------------------------------------------\n" plan)
   (assert (query? plan))
   (let [tree (query-tree plan)
         param-map (or param-map {})]
     (run-query tree param-map)
     (doall (query-results tree))))
+

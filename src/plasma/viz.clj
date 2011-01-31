@@ -1,22 +1,24 @@
 (ns plasma.viz
-  (:use [plasma core operator])
+  (:use [plasma core operator]
+        jiraph.graph)
   (:require [vijual :as vij]
             [clojure (zip :as zip)]))
 
 (defn- tree-vecs* [q root]
   (let [node (get (:ops q) root)
         branch? (get op-branch-map (:type node))
-;        _ (println "type: " (:type node)
-;                   "\nbranch: " branch?)
+        _ (println "type: " (:type node)
+                   "\nbranch: " branch?)
         children (if branch?
                    (case (:type node)
                      :join (:args node)
                      (:send
                       :select
                       :project
-                      :aggregate) [(first (:args node))])
+                      :aggregate
+                      :receive) [(first (:args node))])
                    nil)
-;        _ (println "children: " children)
+        _ (println "children: " children)
         label (case (:type node)
                 :traverse (str "tr " (second (:args node)))
                 :parameter (str "pr \"" (first (:args node)) "\"")
@@ -29,3 +31,38 @@
 
 (defn print-query [plan]
   (vij/draw-tree (tree-vecs plan)))
+
+(defn- dot-id
+  [id]
+  (apply str "ID_" (take 4 (drop 5 id))))
+
+(defn- dot-edge
+  [src tgt props]
+  (let [label (name (:label props))]
+    (println "\t\t" src " -> " tgt "[label=\"" label "\"];")))
+
+(defn- dot-node
+  [id]
+  (let [n (find-node id)
+        d-id (dot-id id)
+        edges (get-edges id)
+        label (or (:label n) d-id)]
+    (println (str "\t" d-id " [label=\"" label "\"];"))
+    (doseq [[tgt-id props] edges]
+      (dot-edge d-id (dot-id tgt-id) props))))
+
+(defn dot-graph 
+  "Output the dot (graphviz) graph description for the given graph."
+  [g]
+  (with-graph g 
+    (let [nodes (node-ids :graph)]
+      (with-out-str 
+        (println "digraph G {\n\tnode [shape=plaintext]")
+        (doseq [n nodes] 
+          (dot-node n))
+        (println "}")))))
+
+(defn save-dot-graph
+  [g path]
+  (spit path (dot-graph g)))
+
