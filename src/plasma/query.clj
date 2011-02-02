@@ -217,7 +217,7 @@
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
         paths (vec (map vec (partition 2 bindings)))
-        plan {:type :plasma-plan
+        plan {:type :query
               :root nil    ; root operator id
               :params {}   ; param-name -> parameter-op
               :ops {}      ; id         -> operator
@@ -238,7 +238,12 @@
 (defn query?
   [q]
   (and (associative? q)
-       (= :plasma-plan (:type q))))
+       (= :query (:type q))))
+
+(defn sub-query?
+  [q]
+  (and (associative? q)
+       (= :sub-query (:type q))))
 
 (defn optimize-query-plan
   [plan]
@@ -339,4 +344,13 @@
         param-map (or param-map {})]
     (run-query tree param-map)
     (doall (query-results tree))))
+
+(defn sub-query
+  [plan]
+  (log/to :op "[SUB-QUERY] ------------------------------------------------\n" plan)
+  (assert (sub-query? plan))
+  (let [tree (query-tree plan)]
+    (run-query tree {})))
+
+; TODO: Add a simple query type (and maybe operator) to return a single node by UUID
 

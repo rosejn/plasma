@@ -143,6 +143,23 @@
         {:keys [t2 j3]} tree]
     (operator-deps j3 (:id t2))))
 
+(deftest send-receive-test []
+  (let [tree (traverse-base)
+        {:keys [p1 j3 t3]} tree
+        sel-pred {:type :plasma.operator/predicate
+                  :property :score
+                  :operator '>
+                  :value 0.3}
+        sel (select-op (uuid) j3 (:id t3) sel-pred)
+        proj (project-op (uuid) sel (:id t3))
+        tree (assoc tree
+                    :sel sel
+                    :proj proj)]
+    (enqueue (:in p1) ROOT-ID)
+    (Thread/sleep 20)
+    (is (= #{:kick :bass :snare}
+           (set (map #(:label (find-node %)) (result tree)))))))
+
 (use-fixtures :once test-fixture)
 
 (comment deftest avg-op-test []

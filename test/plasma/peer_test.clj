@@ -1,5 +1,5 @@
 (ns plasma.peer-test
-  (:use [plasma core peer query]
+  (:use [plasma core peer query] :reload-all
         [lamina core]
         [jiraph graph]
         test-utils
@@ -7,7 +7,9 @@
         clojure.stacktrace)
   (:require [logjam.core :as log]))
 
-(log/file :peer "peer.log")
+;(log/file :peer "peer.log")
+(log/console :peer)
+;(log/console :op)
 
 (deftest peer-pool-test []
   (dotimes [i 1000]
@@ -22,39 +24,41 @@
     (clear-graph)
     (test-graph)))
 
-(deftest peer-query-test []
+(deftest peer-send-test []
   (let [port (+ 1000 (rand-int 10000))
-        p1 (local-peer "db/p1" port)]
+        local (local-peer "db/p1" port)]
     (try
-      (init-peer p1)
-      (let [con (peer "localhost" port)]
-        (is (= :pong (wait-for-message (peer-query con :ping) 1000)))
-        (is (= "self" (:label (wait-for-message (peer-query con ROOT-ID) 1000))))
-        (let [res (wait-for-message (peer-query con (path [synth [:music :synths :synth]]
+      (init-peer local)
+      (let [p (peer "localhost" port)]
+        (is (= :pong (wait-for-message (peer-query p :ping) 1000)))
+        (is (= "self" (:label (wait-for-message (peer-query p ROOT-ID) 1000))))
+        (let [res (wait-for-message (peer-query p (path [synth [:music :synths :synth]]
                                                             (where (>= (:score synth) 0.6))
                                                             synth)) 1000)]
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label
-                                          (map #(wait-for-message (peer-query con %))
+                                          (map #(wait-for-message (peer-query p %))
                                                res)))))))
       (finally
-        (peer-close p1)))))
+        (peer-close local)
+        (clear-peer-pool)))))
 
 (deftest proxy-node-test []
   (let [port (+ 1000 (rand-int 10000))
-        p1 (local-peer "db/p1" port)]
+        local (local-peer "db/p1" port)]
     (try
-      (init-peer p1)
-      (let [con (peer "localhost" port)]
-        (is (= :pong (wait-for-message (peer-query con :ping) 1000)))
-        (is (= "self" (:label (wait-for-message (peer-query con ROOT-ID) 1000))))
-        (let [res (wait-for-message (peer-query con (path [synth [:music :synths :synth]]
+      (init-peer local)
+      (let [p (peer "localhost" port)]
+        (is (= :pong (wait-for-message (peer-query p :ping) 1000)))
+        (is (= "self" (:label (wait-for-message (peer-query p ROOT-ID) 1000))))
+        (let [res (wait-for-message (peer-query p (path [synth [:music :synths :synth]]
                                                             (where (>= (:score synth) 0.6))
                                                             synth)) 1000)]
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label
-                                          (map #(wait-for-message (peer-query con %))
+                                          (map #(wait-for-message (peer-query p %))
                                                res)))))))
       (finally
-        (peer-close p1)))))
+        (peer-close local)
+        (clear-peer-pool)))))
 

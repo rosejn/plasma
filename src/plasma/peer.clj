@@ -58,58 +58,72 @@
     (assoc con :type :peer)))
 
 
-(defn- query-handler [graph q]
-  ;(log/to :peer "query-handler q[" (type q) "]: " q)
-  (let [resp (cond
-               (query? q) (with-graph graph (query q))
-               (uuid? q)  (with-graph graph  (find-node q))
-               (= :ping q) :pong
-               :default nil)]
-    ;(log/to :peer "query result:" resp)
-    resp))
+(defmulti peer-handler 
+  (fn [graph msg] 
+    (:type msg)))
 
-(defn server-handler [graph ch client-info]
-  (log/to :peer "Client connected: " client-info)
+(defmethod peer-handler :query 
+  [graph msg]
+  (with-graph graph (query msg)))
+
+(defmethod peer-handler :sub-query 
+  [graph msg]
+  (with-graph graph (sub-query msg)))
+
+(defmethod peer-handler nil
+  [graph msg]
+  nil)
+
+(defn peer-dispatch [graph ch client-info]
+  (log/to :peer "[peer-dispatch] new client: " client-info)
   (receive-all ch
     (fn [req]
-      (log/to :peer "server-handler[" (type req) "]: " req)
       (when req
-        (try
-          (log/to :peer "got request:\n" req)
-          (when-let [response (query-handler graph req)]
-            (log/to :peer "query response: " response)
-            (enqueue ch response))
-        (catch Exception e
-          (log/to :peer "server error")
-          (log/to :peer "------------")
-          (log/to :peer "req from " client-info ": " req)
-          (log/to :peer "caused exception: " e (.printStackTrace e))))))))
+        (log/to :peer "[peer-dispatch] request id: " (:id req))
+        (let [id (:id req)
+              msg (:body req)]
+          (try
+            (when-let [response (cond
+                                  (uuid? msg)  (with-graph graph (find-node msg))
+                                  (= :ping msg) :pong
+                                  :default (peer-handler graph msg))]
+              (let [res {:type :response :id id :body response}]
+                (log/to :peer "[peer-dispatch] response id: " (:id res))
+                (enqueue ch res)))
+            (catch Exception e
+              (log/to :peer "server error")
+              (log/to :peer "------------")
+              (log/to :peer "req from " client-info ": " req)
+              (log/to :peer "caused exception: " e (.printStackTrace e)))))))))
 
 (defn- peer-server
   "Listens on port responding to queries against graph.
   Returns a function that will stop the server when called."
   [graph port]
-  (log/to :peer "peer-server: " port)
+  (log/to :peer "[peer-server] starting on port: " port)
   (start-object-server
-    (partial server-handler graph)
+    (partial peer-dispatch graph)
     {:port port}))
 
 (defn peer-send
   "Send a message to a peer."
   [peer msg]
+  (log/to :peer "[peer-send] peer: " peer)
+  (log/to :peer "[peer-send] host: " (:host peer) "msg type: " (or (:type msg) (type msg)))
   (enqueue (:channel peer) msg))
 
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
-  [peer query]
-  (let [chan (:channel peer)
+  [peer q]
+  (let [req {:type :request :id (uuid) :body q}
+        chan (fork (:channel peer))
         result (constant-channel)
         res-filter (take* 1 
-                          (filter* #(= (:id query) (:id %)) 
-                                   chan))]
-    (log/to :peer "sending peer-query: " (type query))
-    (peer-send peer query)
+                          (map* :body 
+                                (filter* #(= (:id req) (:id %)) 
+                                   chan)))]
+    (peer-send peer req)
     (siphon res-filter result)
     result))
 

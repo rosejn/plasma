@@ -11,7 +11,7 @@
 ; ID of the operator that placed it into the PT and as its value the UUID of
 ; a graph node.
 
-(log/channel :op :debug)
+;(log/channel :op :debug)
 
 (def op-branch-map
   {:project   true
@@ -104,12 +104,12 @@
     (on-closed left-out #(do
                            (log/to :op "[receive] closed...")
                            (close out)))
-    
+
     (siphon in out)
     (on-closed in #(do
                      (log/to :op "[receive] closed...")
                      (close out)))
-    
+
   {:type :receive
    :id id
    :in in
