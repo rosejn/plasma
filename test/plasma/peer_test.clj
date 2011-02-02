@@ -9,31 +9,51 @@
 
 (log/file :peer "peer.log")
 
-(deftest connection-pool-test []
+(deftest peer-pool-test []
   (dotimes [i 1000]
-    (refresh-connection {:host "test.com"
+    (refresh-peer {:host "test.com"
                          :port i})
-    (is (<= (count @connection-pool*)
+    (is (<= (count @peer-pool*)
            MAX-POOL-SIZE))))
 
 (defn- init-peer
   [p]
   (with-graph (:graph p)
+    (clear-graph)
     (test-graph)))
 
-(deftest peer-test []
+(deftest peer-query-test []
   (let [port (+ 1000 (rand-int 10000))
-        p1 (peer "db/p1" port)]
+        p1 (local-peer "db/p1" port)]
     (try
       (init-peer p1)
-      (let [con (peer-connection "localhost" port)]
-        (is (= :pong (wait-for-message (remote-query con :ping) 1000)))
-        (is (= :self (:label (wait-for-message (remote-query con ROOT-ID) 1000))))
-        (let [res (wait-for-message (remote-query con (path [synth [:music :synths :synth]]
-                                                            (where (>= (:score synth) 0.6)))) 1000)]
+      (let [con (peer "localhost" port)]
+        (is (= :pong (wait-for-message (peer-query con :ping) 1000)))
+        (is (= "self" (:label (wait-for-message (peer-query con ROOT-ID) 1000))))
+        (let [res (wait-for-message (peer-query con (path [synth [:music :synths :synth]]
+                                                            (where (>= (:score synth) 0.6))
+                                                            synth)) 1000)]
           (is (= 2 (count res)))
-          (is (= #{:bass :kick} (set (map :label 
-                                          (map #(wait-for-message (remote-query con %)) 
+          (is (= #{:bass :kick} (set (map :label
+                                          (map #(wait-for-message (peer-query con %))
+                                               res)))))))
+      (finally
+        (peer-close p1)))))
+
+(deftest proxy-node-test []
+  (let [port (+ 1000 (rand-int 10000))
+        p1 (local-peer "db/p1" port)]
+    (try
+      (init-peer p1)
+      (let [con (peer "localhost" port)]
+        (is (= :pong (wait-for-message (peer-query con :ping) 1000)))
+        (is (= "self" (:label (wait-for-message (peer-query con ROOT-ID) 1000))))
+        (let [res (wait-for-message (peer-query con (path [synth [:music :synths :synth]]
+                                                            (where (>= (:score synth) 0.6))
+                                                            synth)) 1000)]
+          (is (= 2 (count res)))
+          (is (= #{:bass :kick} (set (map :label
+                                          (map #(wait-for-message (peer-query con %))
                                                res)))))))
       (finally
         (peer-close p1)))))
