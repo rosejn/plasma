@@ -53,7 +53,7 @@
                            pred-list)]
     (assoc plan :filters predicates)))
 
-(defn- plan-op
+(defn plan-op
   [op & args]
   {:type op
    :id (uuid)
@@ -153,9 +153,14 @@
       (fn [plan [binding pred]]
         (log/to :query "pred: " pred)
         (let [select-key (get-in plan [:pbind binding])
-              op (plan-op :select (:root plan) select-key pred)]
-          (assoc-in (assoc plan :root (:id op))
-                    [:ops (:id op)] op)))
+              p-op (plan-op :property (:root plan) select-key (:property pred))
+              s-op (plan-op :select (:id p-op) select-key pred)
+              ops (assoc (:ops plan)
+                         (:id p-op) p-op
+                         (:id s-op) s-op)]
+          (assoc plan 
+                 :root (:id s-op)
+                 :ops ops)))
       plan
       flat-preds)))
 
@@ -245,6 +250,20 @@
   (and (associative? q)
        (= :sub-query (:type q))))
 
+(defn sort*
+  [plan sort-var sort-prop & [order]]
+  (let [order (or order :asc)
+        {:keys [root ops]} plan
+        sort-key (get (:pbind plan) sort-var)
+        p-op (plan-op :property (:root plan) sort-key sort-prop)
+        s-op (plan-op :sort (:id p-op) sort-key sort-prop order)
+        ops (assoc ops
+                   (:id p-op) p-op
+                   (:id s-op) s-op)]
+    (assoc plan 
+           :root (:id s-op)
+           :ops ops)))
+
 (defn optimize-query-plan
   [plan]
   plan)
@@ -253,6 +272,7 @@
 (defn- op-node
   "Instantiate an operator node based on a query node."
   [ops op-node]
+  (log/format :op "[op-node] type: %s" type)
   (let [{:keys [type id args]} op-node
         op-name (symbol (str (name type) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
@@ -276,12 +296,17 @@
       (op-fn id (get ops (first args)))
 
       :send
-      (op-fn id)
+      (do
+        (log/to :query "[send-op] op-node: " (str op-node))
+        (op-fn id (get ops (first args)) (second args)))
 
       :select
       (let [[left skey pred] args
             left (get ops left)]
         (op-fn id left skey pred))
+
+      :property 
+      (apply op-fn id (get ops (first args)) (rest args))
     )))
 
 (defn- ready-op?
@@ -338,18 +363,37 @@
 
 (defn query
   [plan & [param-map]]
-  (log/to :op "[QUERY] ------------------------------------------------\n" plan)
+  (log/to :query "[QUERY] ------------------------------------------------\n" plan)
   (assert (query? plan))
   (let [tree (query-tree plan)
         param-map (or param-map {})]
     (run-query tree param-map)
     (doall (query-results tree))))
 
+(defn- with-send-channel
+  "Append channel to the end of each send operator's args list."
+  [plan ch]
+  (let [ops (map (fn [op]
+                   (if (= :send (:type op))
+                     (assoc op :args (concat (:args op) [ch]))
+                     op))
+                 (vals (:ops plan)))
+        ops (reduce (fn [mem op]
+                      (assoc mem (:id op) op))
+                    {}
+                    ops)]
+    (log/to :query "[with-send-channel] ops: " ops)
+    (doseq [op (filter #(= :send (:type %)) ops)]
+      (log/to :query "[with-send-channel] op: " op))
+    (assoc plan :ops ops)))
+
 (defn sub-query
-  [plan]
-  (log/to :op "[SUB-QUERY] ------------------------------------------------\n" plan)
+  [ch plan & [param-map]]
   (assert (sub-query? plan))
-  (let [tree (query-tree plan)]
+  (log/to :query "[SUB-QUERY] ------------------------------------------------\n" plan)
+  (log/format :query "channel: %s" ch)
+  (let [plan (with-send-channel plan ch)
+        tree (query-tree plan)]
     (run-query tree {})))
 
 ; TODO: Add a simple query type (and maybe operator) to return a single node by UUID

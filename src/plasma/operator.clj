@@ -123,6 +123,8 @@
   receive operator.  Takes a left input operator and a destination network
   channel."
   [id left dest]
+  {:pre [(and (channel? (:out left)) (channel? dest))]}
+  (log/format :op "[send] left: %s dest: %s" left dest)
   (siphon (:out left) dest)
   {:type :send
    :id id
@@ -220,8 +222,11 @@
        comp-fn (if (= :desc order)
 	  							 #(* -1 (compare %1 %2))
 	  							 compare)
-       key-fn  (fn [oa]
-                   (get (find-node (get oa sort-key)) sort-prop))
+       key-fn  (fn [pt]
+                 (let [node-id (get pt sort-key)
+                       props (get pt node-id)
+                       val   (get props sort-prop)]
+                   val))
 			 sort-fn #(sort-by key-fn comp-fn %)]
 	(aggregate-op id left sort-fn)))
 
@@ -229,8 +234,8 @@
   "Aggregates the input and returns the PT with the minimum value (numerical)
   corresponding to the min-prop property."
   [id left minimum-key min-prop]
-  (let [key-fn (fn [oa]
-                 (let [node (find-node (get oa minimum-key))
+  (let [key-fn (fn [pt]
+                 (let [node (find-node (get pt minimum-key))
                        pval (get node min-prop)]
                    pval))
         min-fn (fn [arg-seq]
@@ -241,8 +246,8 @@
   "Aggregates the input and returns the PT with the maximum value (numerical)
   corresponding to the max-prop property."
   [id left maximum-key min-prop]
-  (let [key-fn (fn [oa]
-                 (let [node (find-node (get oa maximum-key))
+  (let [key-fn (fn [pt]
+                 (let [node (find-node (get pt maximum-key))
                        pval (get node min-prop)]
                    pval))
         max-fn (fn [arg-seq]
@@ -255,17 +260,16 @@
   "Aggregates the input and returns the average value (numerical)
   corresponding to the avg-prop property."
   [left maximum-key min-prop]
-  (let [key-fn (fn [oa]
-                 (let [node (find-node (get oa maximum-key))
+  (let [key-fn (fn [pt]
+                 (let [node (find-node (get pt maximum-key))
                        pval (get node min-prop)]
                    pval))
         max-fn (fn [arg-seq]
                  [(apply max-key key-fn arg-seq)])]
     (aggregate-op left max-fn)))
 
-(defn- do-predicate [node-id predicate]
-  (let [node (find-node node-id)
-        prop (get node (:property predicate))
+(defn- do-predicate [props predicate]
+  (let [prop (get props (:property predicate))
         op (ns-resolve *ns* (:operator predicate))
         result (op prop (:value predicate))]
     (log/to :op "[do-predicate] prop: " prop " op: " op "result: " result)
@@ -283,22 +287,52 @@
   [id left select-key predicate]
   (let [left-out (:out left)
         out      (channel)]
-    (siphon (filter* #(do-predicate (get % select-key) predicate) left-out)
+    (siphon (filter* 
+              (fn [pt]
+                (let [node-id (get pt select-key)
+                      props (get pt node-id)]
+                  (log/format :op 
+                              "[select-op] 
+                              skey: %s 
+                              node-id: %s
+                              pt: %s
+                              props: %s" select-key
+                              node-id
+                              pt
+                              props)
+                (do-predicate props predicate)))
+              left-out)
             out)
     (on-closed left-out #(close out))
-		(comment receive-all left-out
-		  (fn [pt]
-      (log/to :op "[select] pt: " pt)
-			  (if (nil? pt)
-			    (enqueue out pt)
-			    (if (do-predicate (get pt select-key) predicate)
-				    (enqueue out pt)))))
     {:type :select
      :id id
      :select-key select-key
      :predicate predicate
      :left left
      :out out}))
+
+(defn property-op
+  "Loads a node property from the database.  Used to pre-load
+  properties for operations like select and sort that rely on property
+  values already being in the PT map."
+  [id left pt-key prop]
+  (log/to :op "[property-op] loader for prop: " prop)
+  (let [left-out (:out left)
+        out (map* (fn [pt] 
+                    (let [node-id (get pt pt-key)
+                          node (find-node node-id)
+                          val  (get node prop)
+                          pt (assoc-in pt [node-id prop] val)]
+                      (log/to :op "[property-op] pt out: " pt)
+                      pt))
+                  left-out)] 
+    (on-closed left-out #(close out))
+  {:type :property
+   :id id
+   :left left
+   :pt-key pt-key
+   :prop prop
+   :out out}))
 
 (defn project-op
 	"Project will turn a stream of PTs into a stream of node UUIDs.

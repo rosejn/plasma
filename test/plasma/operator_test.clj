@@ -31,7 +31,7 @@
     tree))
 
 (defn result [q]
-  (channel-seq (get-in q [:proj :out])))
+  (channel-seq (get-in q [:proj :out]) 1000))
 
 (deftest parameter-op-test []
   (let [p-op (parameter-op (uuid))
@@ -59,10 +59,11 @@
 (deftest sort-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
-        s-desc (sort-op (uuid) j3 (:id t3) :score :desc)
+        pl (property-op (uuid) j3 (:id t3) :score)
+        s-desc (sort-op (uuid) pl (:id t3) :score :desc)
         proj-desc (project-op (uuid) s-desc (:id t3))
         tree-desc (assoc tree :proj proj-desc)
-        s-asc (sort-op (uuid) j3 (:id t3) :score :asc)
+        s-asc (sort-op (uuid) pl (:id t3) :score :asc)
         proj-asc (project-op (uuid) s-asc (:id t3))
         tree-asc (assoc tree :proj proj-asc)]
     (enqueue (:in p1) ROOT-ID)
@@ -128,7 +129,8 @@
                   :property :score
                   :operator '>
                   :value 0.3}
-        sel (select-op (uuid) j3 (:id t3) sel-pred)
+        prop-load (property-op (uuid) j3 (:id t3) (:property sel-pred))
+        sel (select-op (uuid) prop-load (:id t3) sel-pred)
         proj (project-op (uuid) sel (:id t3))
         tree (assoc tree
               :sel sel
@@ -150,7 +152,8 @@
                   :property :score
                   :operator '>
                   :value 0.3}
-        sel (select-op (uuid) j3 (:id t3) sel-pred)
+        prop-load (property-op (uuid) j3 (:id t3) (:property sel-pred))
+        sel (select-op (uuid) prop-load (:id t3) sel-pred)
         proj (project-op (uuid) sel (:id t3))
         tree (assoc tree
                     :sel sel

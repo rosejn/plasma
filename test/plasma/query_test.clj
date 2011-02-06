@@ -2,10 +2,12 @@
   (:use [plasma core query viz]
         [clojure test stacktrace]
         [jiraph graph]
+        lamina.core
         test-utils)
   (:require [logjam.core :as log]))
 
-;(log/console :op)
+(log/console :query)
+(log/file :query "query.log")
 
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
@@ -33,4 +35,25 @@
            (set (map #(:label (find-node %))
                      (query p)))))))
 
+(defn append-send-node
+  [plan]
+  (let [{:keys [ops root]} plan
+        op (plan-op :send root)
+        ops (assoc ops (:id op) op)  ; add to ops
+        plan (assoc plan 
+                    :type :sub-query
+                    :root op
+                    :ops ops)]
+    plan))
+
+(deftest sub-query-test
+  (let [plan (path [:music :synths :synth])
+        plan (append-send-node plan)
+        res-chan (channel)]
+    (sub-query res-chan plan)
+    (is (= #{:kick :bass :snare :hat}
+           (set (map #(:label (find-node %))
+                     (channel-seq res-chan 1000)))))))
+
 (use-fixtures :once test-fixture)
+
