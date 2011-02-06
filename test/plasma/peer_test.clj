@@ -8,15 +8,18 @@
   (:require [logjam.core :as log]))
 
 ;(log/file :peer "peer.log")
-(log/console :peer)
-;(log/console :op)
+;(log/console :peer)
 
 (deftest peer-pool-test []
-  (dotimes [i 1000]
-    (refresh-peer {:host "test.com"
-                         :port i})
-    (is (<= (count @peer-pool*)
-           MAX-POOL-SIZE))))
+  (try
+    (dotimes [i 1000]
+      (refresh-peer {:host "test.com"
+                     :port i
+                     :connection (fn [_] nil)})
+      (is (<= (count @peer-pool*)
+              MAX-POOL-SIZE)))
+    (finally
+      (clear-peer-pool))))
 
 (defn- init-peer
   [p]
@@ -53,10 +56,10 @@
         (is (= "self" (:label (wait-for-message (peer-query p ROOT-ID) 1000))))
         (let [res (wait-for-message (peer-query p (path [synth [:music :synths :synth]]
                                                             (where (>= (:score synth) 0.6))
-                                                            synth)) 1000)]
+                                                            synth)) 100)]
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label
-                                          (map #(wait-for-message (peer-query p %))
+                                          (map #(wait-for-message (peer-query p %) 100)
                                                res)))))))
       (finally
         (peer-close local)

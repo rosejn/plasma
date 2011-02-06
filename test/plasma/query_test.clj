@@ -6,8 +6,8 @@
         test-utils)
   (:require [logjam.core :as log]))
 
-(log/console :query)
-(log/file :query "query.log")
+;(log/console :query)
+;(log/file :query "query.log")
 
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
@@ -40,7 +40,7 @@
   (let [{:keys [ops root]} plan
         op (plan-op :send root)
         ops (assoc ops (:id op) op)  ; add to ops
-        plan (assoc plan 
+        plan (assoc plan
                     :type :sub-query
                     :root op
                     :ops ops)]

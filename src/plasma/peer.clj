@@ -1,11 +1,12 @@
 (ns plasma.peer
-  (:use [lamina core]
+  (:use [lamina core connections]
         [aleph object]
         [plasma core query]
         jiraph.graph)
   (:require [logjam.core :as log]))
 
 (log/channel :peer :debug)
+(log/console :peer)
 
 (def DEFAULT-PORT 4242)
 
@@ -19,13 +20,23 @@
 (defn current-time []
   (System/currentTimeMillis))
 
-(defn- flush-peer-pool []
+(defn- flush-peer-pool 
+  []
+  {:post [(every? #(contains? % :connection) (vals @peer-pool*))]}
   (let [to-drop (- (count @peer-pool*) IDEAL-POOL-SIZE)
-        conns (drop to-drop (sort-by :last-used (vals @peer-pool*)))]
+        sorted  (sort-by :last-used (vals @peer-pool*))
+        dropped (take to-drop sorted)
+        conns (drop to-drop sorted)]
     (reset! peer-pool*
-            (reduce #(assoc %1 [(:host %2) (:port %2)] %2) conns))))
+            (reduce #(assoc %1 [(:host %2) (:port %2)] %2) {} conns))
+  (doseq [con (map :connection dropped)]
+;    (log/to :peer "[clear-peer-pool] con: " con)
+    (close-connection con))))
 
 (defn clear-peer-pool []
+  (doseq [con (map :connection (vals @peer-pool*))]
+;    (log/to :peer "[clear-peer-pool] con: " con)
+    (close-connection con))
   (reset! peer-pool* {}))
 
 (defn refresh-peer [peer]
@@ -40,13 +51,12 @@
   ([peer]
    (refresh-peer peer))
   ([host port]
-   (let [ch (wait-for-result (object-client {:host host :port port}))]
-     (peer-cache ch host port)))
-  ([ch host port]
-   (peer-cache {:type :peer
-                :host host
-                :port port
-                :channel ch})))
+   (let [con (persistent-connection 
+               #(object-client {:host host :port port}))]
+     {:type :peer
+      :host host
+      :port port
+      :connection con})))
 
 (defn peer
   "Returns a peer for the given host and port.
@@ -57,16 +67,15 @@
               (peer-cache host port))]
     (assoc con :type :peer)))
 
-
-(defmulti peer-handler 
-  (fn [graph msg] 
+(defmulti peer-handler
+  (fn [graph msg]
     (:type msg)))
 
-(defmethod peer-handler :query 
+(defmethod peer-handler :query
   [graph msg]
   (with-graph graph (query msg)))
 
-(defmethod peer-handler :sub-query 
+(defmethod peer-handler :sub-query
   [graph msg]
   (with-graph graph (sub-query msg)))
 
@@ -79,7 +88,7 @@
   (receive-all ch
     (fn [req]
       (when req
-        (log/to :peer "[peer-dispatch] request id: " (:id req))
+        (log/to :peer "[peer-dispatch] req: " req)
         (let [id (:id req)
               msg (:body req)]
           (try
@@ -88,7 +97,7 @@
                                   (= :ping msg) :pong
                                   :default (peer-handler graph msg))]
               (let [res {:type :response :id id :body response}]
-                (log/to :peer "[peer-dispatch] response id: " (:id res))
+                (log/to :peer "[peer-dispatch] response: " res)
                 (enqueue ch res)))
             (catch Exception e
               (log/to :peer "server error")
@@ -105,25 +114,27 @@
     (partial peer-dispatch graph)
     {:port port}))
 
-(defn peer-send
-  "Send a message to a peer."
-  [peer msg]
-  (log/to :peer "[peer-send] peer: " peer)
-  (log/to :peer "[peer-send] host: " (:host peer) "msg type: " (or (:type msg) (type msg)))
-  (enqueue (:channel peer) msg))
+; TODO: handle (re-)connection errors here...?
+(defn- peer-connection
+  [peer]
+  (let [con ((:connection peer))
+        res (wait-for-result con)]
+        (log/to :peer "[peer-connection] res:" res)
+    res))
 
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
   [peer q]
+  (log/to :peer "[peer-query] peer: " peer)
   (let [req {:type :request :id (uuid) :body q}
-        chan (fork (:channel peer))
+        chan (peer-connection peer)
         result (constant-channel)
-        res-filter (take* 1 
-                          (map* :body 
-                                (filter* #(= (:id req) (:id %)) 
+        res-filter (take* 1
+                          (map* :body
+                                (filter* #(= (:id req) (:id %))
                                    chan)))]
-    (peer-send peer req)
+    (enqueue chan req)
     (siphon res-filter result)
     result))
 
@@ -159,6 +170,11 @@
 (defn peer-close
   "Stop listening for incoming connections."
   [p]
-  (@(:server p))
-  (reset! (:server p) nil))
+  (cond 
+    (contains? p :server) (do
+                            (@(:server p))
+                            (reset! (:server p) nil))
+    (contains? p :connection) (do
+                                (close-connection (:connection p)))))
+
 
