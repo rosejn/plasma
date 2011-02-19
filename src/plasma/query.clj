@@ -69,7 +69,7 @@
     (cond
       ; path starting with a keyword means start at the root
       (keyword? start)
-      (let [root-op (plan-op :parameter ROOT-ID)]
+      (let [root-op (plan-op :parameter (root-node))]
         [root-op (:id root-op)])
 
       ; starting with a symbol, refers to a previous bind point in the query
@@ -263,6 +263,7 @@
               :ops {}      ; id         -> operator
               :filters {}  ; binding    -> predicate
               :pbind {}    ; symbol     -> traversal       (path binding)
+              :paths paths
               }]
     (-> plan
       (traversal-tree paths)
@@ -347,7 +348,8 @@
   "Check whether an operator's child operators have been instantiated if it has children,
   to see whether it is ready to be instantiated."
   [plan op]
-  (let [child-ids (filter #(and (uuid? %) (not= ROOT-ID %)) (:args op))]
+  (let [root-id (root-node)
+        child-ids (filter #(and (uuid? %) (not= root-id %)) (:args op))]
     (if (empty? child-ids)
       true
       (every? #(contains? plan %) child-ids))))
@@ -384,7 +386,10 @@
   [plan]
   (if (has-projection? plan)
     plan
-    (project plan (ffirst (:pbind plan)))))
+    (let [bind-sym (if (= 1 (count (:pbind plan)))
+                     (ffirst (:pbind plan))
+                     (first (last (:paths plan))))]
+            (project plan bind-sym))))
 
 (defn query-tree
   "Convert a query plan into a query execution tree."

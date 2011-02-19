@@ -25,9 +25,10 @@
 (deftest where-query-test
   (let [q (path [s [:music :synths :synth]]
                 (where (> (:score s) 0.3)))
-        q (project q 's :label)]
+        q2 (project q 's :label)]
+    (is (every? uuid? (query q)))
     (is (= #{:kick :bass :snare}
-           (set (map :label (query q))))))
+           (set (map :label (query q2))))))
   (let [p (path [sesh [:sessions :session]
                  synth [sesh :synth]]
                 (where (= (:label synth) :kick)))

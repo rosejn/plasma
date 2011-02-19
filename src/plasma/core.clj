@@ -4,7 +4,7 @@
     [aleph tcp formats]
     [jiraph graph]))
 
-(def ROOT-ID "UUID:ROOT")
+(def META-ID "UUID:META")
 
 (def DB-PATH "db")
 (def *current-query* nil)
@@ -41,21 +41,51 @@
   (and (string? s)
        (= (seq "UUID:") (take 5 (seq s)))))
 
-(defn node [& key-vals]
+(defn node 
+  "Create a node in the current graph that contains the given key-value pairs. If a UUID string is passed as the first argument then it will be used for the new node, otherwise a new one will be generated."
+  [& key-vals]
   (let [[id key-vals] (if (and (odd? (count key-vals))
                                (string? (first key-vals)))
                         (list (first key-vals) (next key-vals))
                         (list (uuid) key-vals))]
-    (apply add-node! :graph id key-vals)
+    (apply add-node! :graph id :id id key-vals)
     id))
 
-(defn find-node [uuid]
+(defn find-node 
+  "Lookup a node map by UUID."
+  [uuid]
   (get-node :graph uuid))
 
-(defn proxy-node [uuid url]
+(defn- init-new-graph
+  []
+  (let [root (node :label :root)
+        meta (node META-ID :root root)]
+    {:root root}))
+
+(defn graph
+  "Open a graph database located at path, creating it if it doesn't already exist."
+  [path]
+  (let [g {:graph (layer path)}]
+    (with-graph g
+      (let [meta (find-node META-ID)
+            meta (if meta 
+                   meta 
+                   (init-new-graph))]
+        (with-meta g meta)))))
+
+(defn root-node
+  "Get the UUID of the root node of the graph."
+  []
+  (:root (meta *graph*)))
+
+(defn proxy-node 
+  "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."
+  [uuid url]
   (node uuid :proxy url))
 
-(defn proxy-node? [uuid]
+(defn proxy-node? 
+  "Check whether the node with the given UUID is a proxy node."
+  [uuid]
   (contains? (find-node uuid) :proxy))
 
 (defmacro with-nodes! [bindings & body]

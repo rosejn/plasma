@@ -45,11 +45,11 @@
   (let [tree (traverse-base)
         {:keys [p1 r1 t3]} tree
         agg  (aggregate-op (uuid) r1)
-        proj (project-op (uuid) agg (:id t3))
+        proj (project-op (uuid) agg (:id t3) false)
         tree (assoc tree
               :agg agg
               :proj proj)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (is (= #{:kick :bass :snare :hat}
            (set (map #(:label (find-node %)) (result tree)))))))
 
@@ -59,14 +59,14 @@
 (deftest sort-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
-        pl (property-op (uuid) j3 (:id t3) :score)
+        pl (property-op (uuid) j3 (:id t3) [:score])
         s-desc (sort-op (uuid) pl (:id t3) :score :desc)
-        proj-desc (project-op (uuid) s-desc (:id t3))
+        proj-desc (project-op (uuid) s-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)
         s-asc (sort-op (uuid) pl (:id t3) :score :asc)
-        proj-asc (project-op (uuid) s-asc (:id t3))
+        proj-asc (project-op (uuid) s-asc (:id t3) false)
         tree-asc (assoc tree :proj proj-asc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= '(:kick :bass :snare :hat)
            (map #(:label (find-node %)) (result tree-desc))))
@@ -77,9 +77,9 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         min-desc (min-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) min-desc (:id t3))
+        proj-desc (project-op (uuid) min-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= '(:hat)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -88,9 +88,9 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         max-desc (max-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) max-desc (:id t3))
+        proj-desc (project-op (uuid) max-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -99,9 +99,9 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         limit-desc (limit-op (uuid) j3 2)
-        proj-desc (project-op (uuid) limit-desc (:id t3))
+        proj-desc (project-op (uuid) limit-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= 2 (count (map #(:label (find-node %)) (result tree-desc)))))))
 
@@ -112,9 +112,9 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         choose-desc (choose-op (uuid) j3 2)
-        proj-desc (project-op (uuid) choose-desc (:id t3))
+        proj-desc (project-op (uuid) choose-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (let [res (map #(:label (find-node %)) (result tree-desc))]
       (is (= 2 (count res))))))
@@ -129,13 +129,13 @@
                   :property :score
                   :operator '>
                   :value 0.3}
-        prop-load (property-op (uuid) j3 (:id t3) (:property sel-pred))
+        prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
         sel (select-op (uuid) prop-load (:id t3) sel-pred)
-        proj (project-op (uuid) sel (:id t3))
+        proj (project-op (uuid) sel (:id t3) false)
         tree (assoc tree
               :sel sel
               :proj proj)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
@@ -152,13 +152,13 @@
                   :property :score
                   :operator '>
                   :value 0.3}
-        prop-load (property-op (uuid) j3 (:id t3) (:property sel-pred))
+        prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
         sel (select-op (uuid) prop-load (:id t3) sel-pred)
-        proj (project-op (uuid) sel (:id t3))
+        proj (project-op (uuid) sel (:id t3) false)
         tree (assoc tree
                     :sel sel
                     :proj proj)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
@@ -169,9 +169,9 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         avg-desc (avg-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) avg-desc (:id t3))
+        proj-desc (project-op (uuid) avg-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) ROOT-ID)
+    (enqueue (:in p1) (root-node))
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))

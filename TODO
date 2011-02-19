@@ -1,3 +1,19 @@
+* Change name to:
+
+- d-graph, dgraph, dg
+- net-graph, netgraph
+- p-graph, pgraph
+
+-------------
+
+* the root node of each graph should have a true UUID rather than UUID:ROOT
+because when they are proxy nodes they will need to have something other
+than the local-root id.
+ - instead use UUID:META for the local meta-data node that loads the root-id
+   and any other metadata...
+
+-----------
+
 == Moving to defrecord style:
 
 methods:
@@ -6,6 +22,9 @@ methods:
 * plan version
 * instance version
 
+----------------
+
+* have property operator first check in the path-tuple so it doesn't go to disk unneccessarily
 
 * connect and transmit with send and receive ops
 

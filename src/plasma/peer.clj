@@ -5,8 +5,11 @@
         jiraph.graph)
   (:require [logjam.core :as log]))
 
+; Special uuid used to query for a peer's root node.
+(def ROOT-ID "UUID:ROOT")
+
 (log/channel :peer :debug)
-(log/console :peer)
+;(log/console :peer)
 
 (def DEFAULT-PORT 4242)
 
@@ -98,10 +101,18 @@
         (let [id (:id req)
               msg (:body req)]
           (try
-            (when-let [response (cond
-                                  (uuid? msg)  (with-graph graph (find-node msg))
-                                  (= :ping msg) :pong
-                                  :default (peer-handler graph msg))]
+            (let [response (cond
+                                  (= ROOT-ID msg)
+                                  (with-graph graph (root-node))
+
+                                  (uuid? msg)  
+                                  (with-graph graph (find-node msg))
+
+                                  (= :ping msg) 
+                                  :pong
+
+                                  :default 
+                                  (peer-handler graph msg))]
               (let [res {:type :response :id id :body response}]
                 (log/to :peer "[peer-dispatch] response: " res)
                 (enqueue ch res)))
@@ -157,22 +168,21 @@
 
 (defn- init-peer-graph
   []
-  (when-not (find-node ROOT-ID)
-    (let [root (node ROOT-ID :label :root)
-          net  (node :label :net)]
-      (edge ROOT-ID net :label :net))))
+  (when-not (:edges (find-node (root-node)))
+    (let [net  (node :label :net)]
+      (edge (root-node) net :label :net))))
 
 (defn local-peer
   "Create a new peer using a graph database located at path, optionally
   specifying the port number to listen on."
   [path & [port]]
   (let [port (if port port DEFAULT-PORT)
-        graph {:graph (layer path)}]
+        g (graph path)]
     (log/to :peer "[peer] path:" path " port:" port)
        {:type :peer
-        :server (atom (peer-server graph port))
+        :server (atom (peer-server g port))
         :port port
-        :graph graph}))
+        :graph g}))
 
 (defn peer-listen
   "Start listening for connections on the given peer."
