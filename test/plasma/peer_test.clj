@@ -15,7 +15,7 @@
     (dotimes [i 1000]
       (refresh-peer {:host "test.com"
                      :port i
-                     :connection (fn [_] nil)})
+                     :connection (channel)}) ;(fn [_] nil)})
       (is (<= (count @peer-pool*)
               MAX-POOL-SIZE)))
     (finally
@@ -33,11 +33,11 @@
     (try
       (init-peer local)
       (let [p (peer "localhost" port)]
-        (is (= :pong (wait-for-message (peer-query p :ping) 1000)))
-        (is (= "self" (:label (wait-for-message (peer-query p ROOT-ID) 1000))))
-        (let [res (wait-for-message (peer-query p (path [synth [:music :synths :synth]]
+        (is (= :pong (peer-query p :ping 1000)))
+        (is (= "self" (:label (peer-query p ROOT-ID 1000))))
+        (let [res (peer-query p (path [synth [:music :synths :synth]]
                                                             (where (>= (:score synth) 0.6))
-                                                            synth)) 1000)]
+                                                            synth) 1000)]
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label
                                           (map #(wait-for-message (peer-query p %))
@@ -46,22 +46,23 @@
         (peer-close local)
         (clear-peer-pool)))))
 
-(deftest proxy-node-test []
+(comment deftest proxy-node-test []
   (let [port (+ 1000 (rand-int 10000))
-        local (local-peer "db/p1" port)]
+        local (local-peer "db/p1" port)
+        remote (local-peer "db/p2" (inc port))]
     (try
       (init-peer local)
-      (let [p (peer "localhost" port)]
-        (is (= :pong (wait-for-message (peer-query p :ping) 1000)))
-        (is (= "self" (:label (wait-for-message (peer-query p ROOT-ID) 1000))))
-        (let [res (wait-for-message (peer-query p (path [synth [:music :synths :synth]]
-                                                            (where (>= (:score synth) 0.6))
-                                                            synth)) 100)]
-          (is (= 2 (count res)))
-          (is (= #{:bass :kick} (set (map :label
-                                          (map #(wait-for-message (peer-query p %) 100)
-                                               res)))))))
+      (init-peer remote)
+      (let [local-root (peer-query local ROOT-ID 200)
+            net (first (query (path [:net])))
+            peer-node (proxy-node local-root (str "plasma://localhost:" (inc port)))
+            link (edge net peer-node :label :peer)]
+        (let [res (peer-query p (path [:net :peer :music :synths :synth]) 1000)]
+          (is (= #{:kick :bass :snare :hat}
+           (set (map #(:label (find-node %))
+                     (query (path [:music :synths :synth]))))))))
       (finally
         (peer-close local)
+        (peer-close remote)
         (clear-peer-pool)))))
 

@@ -15,7 +15,7 @@
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
            (set (map #(:label (find-node %))
-                     (query (path [:music :synths :synth]))))))))
+                     (query-results tree)))))))
 
 (deftest path-query-test
   (is (= #{:kick :bass :snare :hat}
@@ -23,17 +23,31 @@
                    (query (path [:music :synths :synth])))))))
 
 (deftest where-query-test
-  (is (= #{:kick :bass :snare}
-         (set (map #(:label (find-node %))
-                   (query (path [s [:music :synths :synth]]
-                                (where (> (:score s) 0.3))))))))
+  (let [q (path [s [:music :synths :synth]]
+                (where (> (:score s) 0.3)))
+        q (project q 's :label)]
+    (is (= #{:kick :bass :snare}
+           (set (map :label (query q))))))
   (let [p (path [sesh [:sessions :session]
                  synth [sesh :synth]]
-                (where (= (:label synth) :kick))
-                sesh)]
+                (where (= (:label synth) :kick)))
+        p (project p 'sesh :label)
+        res (query p)]
     (is (= #{:red-pill :take-six}
-           (set (map #(:label (find-node %))
-                     (query p)))))))
+           (set (map :label res))))))
+
+(deftest auto-project-test
+  (let [p (path [sesh [:sessions :session]
+                 synth [sesh :synth]]
+                (where (= (:label synth) :kick)))]
+    (is (false? (has-projection? p)))
+    (is (true? (has-projection? (project p 'sesh :label))))))
+
+(deftest project-test
+  (let [q (-> (path [synth [:music :synths :synth]])
+            (project 'synth :label))]
+    (is (= #{:kick :bass :snare :hat}
+           (set (map :label (query q)))))))
 
 (defn append-send-node
   [plan]
@@ -47,12 +61,13 @@
     plan))
 
 (deftest sub-query-test
-  (let [plan (path [:music :synths :synth])
+  (let [plan (path [synth [:music :synths :synth]])
+        plan (project plan 'synth :label)
         plan (append-send-node plan)
         res-chan (channel)]
     (sub-query res-chan plan)
     (is (= #{:kick :bass :snare :hat}
-           (set (map #(:label (find-node %))
+           (set (map :label
                      (channel-seq res-chan 1000)))))))
 
 (use-fixtures :once test-fixture)

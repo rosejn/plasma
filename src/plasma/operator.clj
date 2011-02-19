@@ -15,6 +15,7 @@
 
 (def op-branch-map
   {:project   true
+   :property  true
    :aggregate true
    :join      true
    :traverse  false
@@ -287,13 +288,13 @@
   [id left select-key predicate]
   (let [left-out (:out left)
         out      (channel)]
-    (siphon (filter* 
+    (siphon (filter*
               (fn [pt]
                 (let [node-id (get pt select-key)
                       props (get pt node-id)]
-                  (log/format :op 
-                              "[select-op] 
-                              skey: %s 
+                  (log/format :op
+                              "[select-op]
+                              skey: %s
                               node-id: %s
                               pt: %s
                               props: %s" select-key
@@ -315,34 +316,45 @@
   "Loads a node property from the database.  Used to pre-load
   properties for operations like select and sort that rely on property
   values already being in the PT map."
-  [id left pt-key prop]
-  (log/to :op "[property-op] loader for prop: " prop)
+  [id left pt-key props]
+  (log/to :op "[property-op] loader for props: " props)
   (let [left-out (:out left)
-        out (map* (fn [pt] 
+        out (map* (fn [pt]
+                    (log/to :op "[propertyp] pt: " pt)
                     (let [node-id (get pt pt-key)
                           node (find-node node-id)
-                          val  (get node prop)
-                          pt (assoc-in pt [node-id prop] val)]
-                      (log/to :op "[property-op] pt out: " pt)
+                          _ (log/to :op "[property] node: " node
+                                    " props: " props)
+                          vals (select-keys node props)
+                          pt   (assoc pt node-id vals)]
+                      (log/to :op "[property] pt out: " pt)
                       pt))
-                  left-out)] 
-    (on-closed left-out #(close out))
+                  left-out)]
+    (on-closed left-out #(do
+                           (log/to :op "[property] closed...")
+                           (close out)))
   {:type :property
    :id id
    :left left
    :pt-key pt-key
-   :prop prop
+   :props props
    :out out}))
 
 (defn project-op
-	"Project will turn a stream of PTs into a stream of node UUIDs.
- Enqueues only the UUID in the PT slot for project-key."
-	[id left project-key]
+	"Project will turn a stream of PTs into a stream of either node UUIDs or node maps containing properties."
+	[id left project-key props?]
   (let [left-out (:out left)
-        out (channel)]
-    (siphon (map* #(get % project-key) left-out)
-            out)
-    (on-closed left-out #(close out))
+        out (map* (fn [pt]
+                    (log/to :op "[project] proj-key: " project-key " pt: " pt)
+                    (let [node-id (get pt project-key)]
+                      (if props?
+                        (get pt node-id)
+                        node-id))) 
+                  left-out)]
+    (on-closed left-out #(do
+                           (log/to :op "[project] closed...")
+                           (close out)))
+    
     (comment receive-all left-out
       (fn [pt]
         (when pt

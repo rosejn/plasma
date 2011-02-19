@@ -1,5 +1,5 @@
 (ns plasma.query
-  (:use [plasma core operator]
+  (:use [plasma util core operator]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -153,18 +153,18 @@
       (fn [plan [binding pred]]
         (log/to :query "pred: " pred)
         (let [select-key (get-in plan [:pbind binding])
-              p-op (plan-op :property (:root plan) select-key (:property pred))
+              p-op (plan-op :property (:root plan) select-key [(:property pred)])
               s-op (plan-op :select (:id p-op) select-key pred)
               ops (assoc (:ops plan)
                          (:id p-op) p-op
                          (:id s-op) s-op)]
-          (assoc plan 
+          (assoc plan
                  :root (:id s-op)
                  :ops ops)))
       plan
       flat-preds)))
 
-(defn- projection
+(comment defn- projection
   "Add the projection operator node to produce the final result nodes for a query."
   [plan body]
   (log/to :query "projection (body): " body "\n"
@@ -182,6 +182,41 @@
     (assoc plan
            :root (:id proj-op)
            :ops ops)))
+
+(defn- load-props
+  [plan bind-sym properties]
+  (let [bind-op (get (:pbind plan) bind-sym)
+        root-op (:root plan)
+        prop-op (plan-op :property root-op bind-op properties)]
+    (assoc plan
+           :root (:id prop-op)
+           :ops (assoc (:ops plan) (:id prop-op) prop-op))))
+
+(defn project
+  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
+
+  (let [q (path [people [:app :social :friends]])]
+    ...
+  
+    ; get the UUIDs of people nodes
+    (project q 'people) 
+  
+    ; get the given set of props for each person node
+    (project 'people :name :email :age))
+    
+  "
+  [plan bind-sym & properties]
+  (log/to :query "[pject] bind-sym: " bind-sym)
+  (let [props? (not (empty? properties)) 
+        plan (if props?
+               (load-props plan bind-sym properties)
+               plan)
+        bind-op (get (:pbind plan) bind-sym)
+        root-op (:root plan)
+        proj-op (plan-op :project root-op bind-op props?)]
+    (assoc plan
+           :root (:id proj-op)
+           :ops (assoc (:ops plan) (:id proj-op) proj-op))))
 
 (defn parameterized
   "Add the parameter map for a query."
@@ -234,7 +269,6 @@
       (where->predicates (where-form body))
       (plan-receiver)
       (selection-ops)
-      (projection body)
       (parameterized))))
 
 (defmacro path [& args]
@@ -255,12 +289,12 @@
   (let [order (or order :asc)
         {:keys [root ops]} plan
         sort-key (get (:pbind plan) sort-var)
-        p-op (plan-op :property (:root plan) sort-key sort-prop)
+        p-op (plan-op :property (:root plan) sort-key [sort-prop])
         s-op (plan-op :sort (:id p-op) sort-key sort-prop order)
         ops (assoc ops
                    (:id p-op) p-op
                    (:id s-op) s-op)]
-    (assoc plan 
+    (assoc plan
            :root (:id s-op)
            :ops ops)))
 
@@ -272,10 +306,10 @@
 (defn- op-node
   "Instantiate an operator node based on a query node."
   [ops op-node]
-  (log/format :op "[op-node] type: %s" type)
   (let [{:keys [type id args]} op-node
         op-name (symbol (str (name type) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
+    (log/format :op "[op-node] type: %s args: %s " type args)
     (case type
       :traverse
       (apply op-fn id nil args)
@@ -287,7 +321,7 @@
       (apply op-fn id args)
 
       :project
-      (op-fn id (get ops (first args)) (second args))
+      (apply op-fn id (get ops (first args)) (rest args))
 
       :aggregate
       (apply op-fn id (map #(get ops %) args))
@@ -305,7 +339,7 @@
             left (get ops left)]
         (op-fn id left skey pred))
 
-      :property 
+      :property
       (apply op-fn id (get ops (first args)) (rest args))
     )))
 
@@ -337,10 +371,26 @@
           nil
           (recur tree (disj ops op-id)))))))
 
+(defn has-projection?
+  "Check whether a query plan contains a project operator."
+  [plan]
+  (if (first (filter #(= :project (:type %)) (vals (:ops plan))))
+    true
+    false))
+
+(defn- with-result-project
+  "If an explicity projection has not been added to the query plan
+  then by default we project on the final element of the path query."
+  [plan]
+  (if (has-projection? plan)
+    plan
+    (project plan (ffirst (:pbind plan)))))
+
 (defn query-tree
   "Convert a query plan into a query execution tree."
   [plan]
-  (let [tree (build-query plan)]
+  (let [plan (with-result-project plan)
+        tree (build-query plan)]
     {:type :query-tree
      :ops tree
      :root (:root plan)
@@ -349,6 +399,9 @@
 (defn run-query
   "Execute a query by feeding parameters into a query operator tree."
   [tree param-map]
+  (unless *graph*
+    (throw (Exception. "Cannot run a query without binding a graph.
+\nFor example:\n\t(with-graph G (query q))\n")))
   (doseq [[param-name param-id] (:params tree)]
     (let [param-val (if (contains? param-map param-name)
                       (get param-map param-name)

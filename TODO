@@ -1,7 +1,13 @@
-* connect and transmit with send and receive ops
+== Moving to defrecord style:
 
-* add property loading operator and add properties to a map of uuids for nodes
-that need pre-loading
+methods:
+* branch?
+ - replaces the operator/op-branch-map
+* plan version
+* instance version
+
+
+* connect and transmit with send and receive ops
 
 * subscribe to a remote node (get a channel of events)
  - send uuid to peer, which goes into a subscription map

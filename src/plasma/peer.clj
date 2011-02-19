@@ -20,7 +20,12 @@
 (defn current-time []
   (System/currentTimeMillis))
 
-(defn- flush-peer-pool 
+(defn- close-peer-con
+  [con]
+  (close con))
+;  (close-connection con))
+
+(defn- flush-peer-pool
   []
   {:post [(every? #(contains? % :connection) (vals @peer-pool*))]}
   (let [to-drop (- (count @peer-pool*) IDEAL-POOL-SIZE)
@@ -31,12 +36,12 @@
             (reduce #(assoc %1 [(:host %2) (:port %2)] %2) {} conns))
   (doseq [con (map :connection dropped)]
 ;    (log/to :peer "[clear-peer-pool] con: " con)
-    (close-connection con))))
+    (close-peer-con con))))
 
 (defn clear-peer-pool []
   (doseq [con (map :connection (vals @peer-pool*))]
 ;    (log/to :peer "[clear-peer-pool] con: " con)
-    (close-connection con))
+    (close-peer-con con))
   (reset! peer-pool* {}))
 
 (defn refresh-peer [peer]
@@ -51,8 +56,9 @@
   ([peer]
    (refresh-peer peer))
   ([host port]
-   (let [con (persistent-connection 
-               #(object-client {:host host :port port}))]
+   (let [con (object-client {:host host :port port})
+;         con (persistent-connection #(object-client {:host host :port port}))
+         ]
      {:type :peer
       :host host
       :port port
@@ -117,15 +123,18 @@
 ; TODO: handle (re-)connection errors here...?
 (defn- peer-connection
   [peer]
-  (let [con ((:connection peer))
-        res (wait-for-result con)]
-        (log/to :peer "[peer-connection] res:" res)
-    res))
+  (wait-for-result (:connection peer)))
+
+;  (let [con ((:connection peer))
+;        _ (log/to :peer "[peer-connection] con: " con)
+;        res (wait-for-result con)]
+;        (log/to :peer "[peer-connection] res:" res)
+;    res))
 
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
-  [peer q]
+  [peer q & [timeout]]
   (log/to :peer "[peer-query] peer: " peer)
   (let [req {:type :request :id (uuid) :body q}
         chan (peer-connection peer)
@@ -136,7 +145,10 @@
                                    chan)))]
     (enqueue chan req)
     (siphon res-filter result)
-    result))
+    (if timeout
+      (wait-for-message result timeout)
+      result)))
+
 
 (defmethod peer-sender "plasma"
   [url]
@@ -170,7 +182,7 @@
 (defn peer-close
   "Stop listening for incoming connections."
   [p]
-  (cond 
+  (cond
     (contains? p :server) (do
                             (@(:server p))
                             (reset! (:server p) nil))

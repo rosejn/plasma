@@ -1,24 +1,28 @@
 (ns plasma.viz
   (:use [plasma core operator]
         jiraph.graph)
-  (:require [vijual :as vij]
+  (:require [logjam.core :as log]
+            [vijual :as vij]
             [clojure (zip :as zip)]))
+
+(log/channel :viz :debug)
 
 (defn- tree-vecs* [q root]
   (let [node (get (:ops q) root)
         branch? (get op-branch-map (:type node))
-        _ (println "type: " (:type node)
-                   "\nbranch: " branch?)
+        _ (log/to :viz "type: " (:type node)
+                  "\nbranch: " branch?)
         children (if branch?
                    (case (:type node)
                      :join (:args node)
                      (:send
                       :select
                       :project
+                      :property
                       :aggregate
                       :receive) [(first (:args node))])
                    nil)
-        _ (println "children: " children)
+        _ (log/to :viz "children: " children)
         label (case (:type node)
                 :traverse (str "tr " (second (:args node)))
                 :parameter (str "pr \"" (first (:args node)) "\"")
@@ -51,14 +55,14 @@
     (doseq [[tgt-id props] edges]
       (dot-edge d-id (dot-id tgt-id) props))))
 
-(defn dot-graph 
+(defn dot-graph
   "Output the dot (graphviz) graph description for the given graph."
   [g]
-  (with-graph g 
+  (with-graph g
     (let [nodes (node-ids :graph)]
-      (with-out-str 
+      (with-out-str
         (println "digraph G {\n\tnode [shape=plaintext]")
-        (doseq [n nodes] 
+        (doseq [n nodes]
           (dot-node n))
         (println "}")))))
 
