@@ -82,10 +82,15 @@
   [id & [param-name]]
   (let [in (channel)
         out (channel)]
+    ;(siphon in out)
     (receive-all in
       (fn [val]
         (log/to :op "[param] " param-name " => " val)
-        (enqueue-and-close out {id val})))
+        (enqueue out {id val})))
+
+    (on-closed in #(do
+                     (log/to :op "[parameter] closed")
+                     (close out)))
   {:type :parameter
    :id id
    :in in
@@ -145,7 +150,7 @@
       (fn [pt]
         (when pt
           (let [src-id (get pt src-key)]
-            ;(log/to :op "[traverse] in:" pt)
+            (log/to :op "[traverse] in:" pt)
             (log/to :op "[traverse] src: " src-id " - " edge-predicate " -> "
                     (count (get-edges src-id edge-pred-fn)) " edges")
             (if (proxy-node? src-id)

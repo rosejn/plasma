@@ -4,8 +4,7 @@
         [lamina core]
         [jiraph graph]))
 
-(def G
-  {:graph (layer "test/db")})
+(def G (graph "test/db"))
 
 (defn test-graph []
   (let [root-id (root-node)]

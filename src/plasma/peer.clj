@@ -5,9 +5,6 @@
         jiraph.graph)
   (:require [logjam.core :as log]))
 
-; Special uuid used to query for a peer's root node.
-(def ROOT-ID "UUID:ROOT")
-
 (log/channel :peer :debug)
 ;(log/console :peer)
 
@@ -82,10 +79,12 @@
 
 (defmethod peer-handler :query
   [graph msg]
+  (log/to :peer "[peer-handler] query")
   (with-graph graph (query msg)))
 
 (defmethod peer-handler :sub-query
   [graph msg]
+  (log/to :peer "[peer-handler] sub-query")
   (with-graph graph (sub-query msg)))
 
 (defmethod peer-handler nil
@@ -97,7 +96,7 @@
   (receive-all ch
     (fn [req]
       (when req
-        (log/to :peer "[peer-dispatch] req: " req)
+        (log/to :peer "[peer-dispatch] req-id: " (:id req))
         (let [id (:id req)
               msg (:body req)]
           (try

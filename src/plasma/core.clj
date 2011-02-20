@@ -1,10 +1,14 @@
 (ns plasma.core
   (:use
+    [plasma util]
     [lamina core]
     [aleph tcp formats]
     [jiraph graph]))
 
 (def META-ID "UUID:META")
+;
+; Special uuid used to query for a graph's root node.
+(def ROOT-ID "UUID:ROOT")
 
 (def DB-PATH "db")
 (def *current-query* nil)
@@ -51,10 +55,21 @@
     (apply add-node! :graph id :id id key-vals)
     id))
 
+(defn root-node
+  "Get the UUID of the root node of the graph."
+  []
+  (:root (meta *graph*)))
+
 (defn find-node 
   "Lookup a node map by UUID."
   [uuid]
-  (get-node :graph uuid))
+  (unless *graph*
+    (throw (Exception. "Cannot find-node without a bound graph. 
+For example:\n\t(with-graph G (find-node id))\n")))
+  (let [uuid (if (= uuid ROOT-ID)
+               (root-node)
+               uuid)]
+    (get-node :graph uuid)))
 
 (defn- init-new-graph
   []
@@ -72,11 +87,6 @@
                    meta 
                    (init-new-graph))]
         (with-meta g meta)))))
-
-(defn root-node
-  "Get the UUID of the root node of the graph."
-  []
-  (:root (meta *graph*)))
 
 (defn proxy-node 
   "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."

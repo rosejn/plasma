@@ -6,6 +6,32 @@
         test-utils)
   (:require [logjam.core :as log]))
 
+(deftest parameter-op-test []
+  (let [id (uuid)
+        p1 (parameter-op id)
+        p2 (parameter-op id)]
+    (enqueue-and-close (:in p1) 42)
+    (enqueue-and-close (:in p2) ROOT-ID)
+    (is (= {id 42} 
+           (first (lazy-channel-seq (:out p1)))))
+    (is (= {id ROOT-ID} 
+           (first (lazy-channel-seq (:out p2)))))
+    (is (and
+          (closed? (:out p1))
+          (closed? (:out p2))))))
+
+(deftest traverse-op-test
+  (let [id (uuid)
+        p1 (parameter-op id ROOT-ID)
+        t1 (traverse-op (uuid) nil (:id p1) :music)
+        j1 (join-op (uuid) p1 t1)]
+    (enqueue-and-close (:in p1) ROOT-ID)
+    (is (uuid? (get (first (channel-seq (:out j1) 500)) (:id t1))))
+    (is (and
+          (closed? (:out p1))
+          (closed? (:out t1))
+          (closed? (:out j1))))))
+
 ; (path [synth [:music :synths :synth]]
 ;   synth)
 ;   TODO: Don't pass nil to traverse-op, instead we need a way to pass the
@@ -33,13 +59,25 @@
 (defn result [q]
   (channel-seq (get-in q [:proj :out]) 1000))
 
-(deftest parameter-op-test []
-  (let [p-op (parameter-op (uuid))
-        id (:id p-op)]
-    (enqueue (:in p-op) 42)
-    (let [[a b] (take 2 (lazy-channel-seq (:out p-op)))]
-      (is (= '(42 nil)
-             (list (get a id) b))))))
+; (path [synth [:music :synths :synth]]
+;   (where (> (:score synth) 0.3)))
+(deftest select-op-test []
+  (let [tree (traverse-base)
+        {:keys [p1 j3 t3]} tree
+        sel-pred {:type :plasma.operator/predicate
+                  :property :score
+                  :operator '>
+                  :value 0.3}
+        prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
+        sel (select-op (uuid) prop-load (:id t3) sel-pred)
+        proj (project-op (uuid) sel (:id t3) false)
+        tree (assoc tree
+              :sel sel
+              :proj proj)]
+    (enqueue-and-close (:in p1) ROOT-ID)
+    (Thread/sleep 20)
+    (is (= #{:kick :bass :snare}
+           (set (map #(:label (find-node %)) (result tree)))))))
 
 (deftest aggregate-op-test []
   (let [tree (traverse-base)
@@ -49,7 +87,7 @@
         tree (assoc tree
               :agg agg
               :proj proj)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (is (= #{:kick :bass :snare :hat}
            (set (map #(:label (find-node %)) (result tree)))))))
 
@@ -66,7 +104,7 @@
         s-asc (sort-op (uuid) pl (:id t3) :score :asc)
         proj-asc (project-op (uuid) s-asc (:id t3) false)
         tree-asc (assoc tree :proj proj-asc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick :bass :snare :hat)
            (map #(:label (find-node %)) (result tree-desc))))
@@ -79,7 +117,7 @@
         min-desc (min-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) min-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:hat)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -90,7 +128,7 @@
         max-desc (max-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) max-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
@@ -101,7 +139,7 @@
         limit-desc (limit-op (uuid) j3 2)
         proj-desc (project-op (uuid) limit-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= 2 (count (map #(:label (find-node %)) (result tree-desc)))))))
 
@@ -114,38 +152,18 @@
         choose-desc (choose-op (uuid) j3 2)
         proj-desc (project-op (uuid) choose-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (let [res (map #(:label (find-node %)) (result tree-desc))]
       (is (= 2 (count res))))))
 
-
-; (path [synth [:music :synths :synth]]
-;   (where (> (:score synth) 0.3)))
-(deftest traverse-test []
-  (let [tree (traverse-base)
-        {:keys [p1 j3 t3]} tree
-        sel-pred {:type :plasma.operator/predicate
-                  :property :score
-                  :operator '>
-                  :value 0.3}
-        prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
-        sel (select-op (uuid) prop-load (:id t3) sel-pred)
-        proj (project-op (uuid) sel (:id t3) false)
-        tree (assoc tree
-              :sel sel
-              :proj proj)]
-    (enqueue (:in p1) (root-node))
-    (Thread/sleep 20)
-    (is (= #{:kick :bass :snare}
-           (set (map #(:label (find-node %)) (result tree)))))))
 
 (comment defn sub-query-test []
   (let [tree (traverse-base)
         {:keys [t2 j3]} tree]
     (operator-deps j3 (:id t2))))
 
-(deftest send-receive-test []
+(deftest send-receive-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         sel-pred {:type :plasma.operator/predicate
@@ -158,12 +176,10 @@
         tree (assoc tree
                     :sel sel
                     :proj proj)]
-    (enqueue (:in p1) (root-node))
+    (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
-
-(use-fixtures :once test-fixture)
 
 (comment deftest avg-op-test []
   (let [tree (traverse-base)
@@ -171,7 +187,24 @@
         avg-desc (avg-op (uuid) j3 (:id t3) :score)
         proj-desc (project-op (uuid) avg-desc (:id t3) false)
         tree-desc (assoc tree :proj proj-desc)]
-    (enqueue (:in p1) (root-node))
+    (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
+
+(deftest ops-test
+  (parameter-op-test)
+  (traverse-op-test)
+  (select-op-test)
+  (aggregate-op-test)
+  (sort-op-test)
+  (min-op-test)
+  (max-op-test)
+  (limit-op-test)
+  (choose-op-test)
+  (send-receive-op-test))
+
+(defn test-ns-hook 
+  []
+  (test-fixture ops-test))
+

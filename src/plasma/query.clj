@@ -69,7 +69,7 @@
     (cond
       ; path starting with a keyword means start at the root
       (keyword? start)
-      (let [root-op (plan-op :parameter (root-node))]
+      (let [root-op (plan-op :parameter ROOT-ID)]
         [root-op (:id root-op)])
 
       ; starting with a symbol, refers to a previous bind point in the query
@@ -348,7 +348,7 @@
   "Check whether an operator's child operators have been instantiated if it has children,
   to see whether it is ready to be instantiated."
   [plan op]
-  (let [root-id (root-node)
+  (let [root-id ROOT-ID
         child-ids (filter #(and (uuid? %) (not= root-id %)) (:args op))]
     (if (empty? child-ids)
       true
@@ -412,7 +412,7 @@
                       (get param-map param-name)
                       param-name)
           param-op (get-in tree [:ops param-id])]
-      (enqueue (get param-op :in) param-val))))
+      (enqueue-and-close (get param-op :in) param-val))))
 
 (defn query-results
   [tree & [timeout]]
