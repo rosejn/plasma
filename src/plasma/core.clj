@@ -24,15 +24,9 @@
      :host host
      :port (Integer. port)}))
 
-(defmulti peer-sender #(:proto (url-map %)))
-
-(comment defn plasma-graph
-  "You need to call this function with the path to your local plasma database
-  before using the rest of this library.  If no DB currently exists, a new
-  one will be created."
-  [g]
-  (open! g)
-  (set-graph! g))
+(defmulti peer-sender 
+  (fn [url]
+    (:proto (url-map url))))
 
 (defn clear-graph []
   (truncate!))

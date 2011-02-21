@@ -6,6 +6,7 @@
             [logjam.core :as log]))
 
 (log/channel :query :debug)
+(log/channel :optimize :query)
 
 (defn where-form [body]
   (let [where? #(and (list? %) (= 'where (first %)))
@@ -206,7 +207,7 @@
     
   "
   [plan bind-sym & properties]
-  (log/to :query "[pject] bind-sym: " bind-sym)
+  (log/to :query "[project] bind-sym: " bind-sym)
   (let [props? (not (empty? properties)) 
         plan (if props?
                (load-props plan bind-sym properties)
@@ -299,21 +300,94 @@
            :root (:id s-op)
            :ops ops)))
 
-(defn optimize-query-plan
-  [plan]
-  plan)
+; TODO: Keeping the operator params mixed with the input deps is a mess, change operator
+; plan nodes to be more structured
+(defn downstream-op-node
+  "Find the downstream operator node for the given operator node in the plan."
+  [plan op-id]
+  (first (filter (fn [op]
+                   (or
+                     (and (= :join (:type op))
+                          (= op-id (second (:args op))))
+                     (and (not= :traverse (:type op))
+                          (= op-id (first (:args op))))))
+                 (vals (:ops plan)))))
 
-; TODO: Deal with nil receive op...
+(defn replace-input-op
+  "Returns a new operator node with the left input replaced with new-left."
+  [op old-in new-in]
+  (assoc-in op [:args (.indexOf (:args op) old-in)] new-in))
+
+(defn reparent-op
+  "Move an operator node in the plan to be the direct downstream operator from a target op."
+  [plan op-id tgt-id]
+  (let [ops (:ops plan)
+        ; create new version of moving op with tgt-id as left input
+        op (get ops op-id)
+        parent-op-id (first (:args op))
+        new-op (replace-input-op op parent-op-id tgt-id)
+        _ (log/to :optimize "[reparent-op] new-op: " new-op)
+
+        ; create new version of op downstream from tgt with moving op-id as replaced input
+        tgt-down (downstream-op-node plan tgt-id)
+        tgt-down (replace-input-op tgt-down tgt-id op-id)
+        _ (log/to :optimize "[reparent-op] tgt-down: " tgt-down)
+
+        new-ops (assoc ops
+                       op-id new-op
+                       (:id tgt-down) tgt-down)
+
+        ; create new version of op downstream from moving op old parent as input op
+        op-down (downstream-op-node plan op-id)
+        new-ops (if (= (:root plan) op-id)
+                  new-ops
+                  (let [new-op-down (replace-input-op op-down op-id parent-op-id)]
+                    _ (log/to :optimize "[reparent-op] new-op-down: " new-op-down)
+                    (assoc new-ops (:id op-down) new-op-down)))
+        plan (if (= (:root plan) op-id)
+               (assoc plan :ops new-ops :root parent-op-id) 
+               (assoc plan :ops new-ops))]
+    plan))
+
+(defn ops-of-type
+  "Select all operator nodes of a given type."
+  [plan type]
+  (filter #(= type (:type %)) (vals (:ops plan))))
+
+;TODO: Combine property-ops for the same key
+(defn optimize-plan
+  [plan]
+  ; Pull property and select ops to just below the join after their associated traversals
+  (let [select-ops (ops-of-type plan :select)
+        selects-up (reduce (fn [mem op]
+                             (let [select-key (second (:args op))
+                                   tgt-op (downstream-op-node mem select-key)]
+                               (log/to :optimize "[optimize-plan] select-tgt: " tgt-op)
+                               (reparent-op mem (:id op) (:id tgt-op))))
+                           plan
+                         select-ops)
+        prop-ops (ops-of-type plan :property)
+;        _ (print-query selects-up)
+        props-up (reduce (fn [mem op]
+                           (let [prop-key (second (:args op))
+                                 tgt-op (downstream-op-node mem prop-key)]
+                             (log/to :optimize "[optimize-plan] prop-key: " prop-key
+                                     " prop-tgt: " tgt-op)
+                             (reparent-op mem (:id op) (:id tgt-op))))
+                         selects-up
+                         prop-ops)]
+    props-up))
+
 (defn- op-node
   "Instantiate an operator node based on a query node."
-  [ops op-node]
+  [plan ops recv-chan op-node]
   (let [{:keys [type id args]} op-node
+        _ (log/format :op-node "[op-node] type: %s\nid: %s\nargs: %s " type id args)
         op-name (symbol (str (name type) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
-    (log/format :op "[op-node] type: %s args: %s " type args)
     (case type
       :traverse
-      (apply op-fn id nil args)
+      (apply op-fn id plan recv-chan args)
 
       :join
       (apply op-fn id (map ops args))
@@ -328,7 +402,7 @@
       (apply op-fn id (map #(get ops %) args))
 
       :receive
-      (op-fn id (get ops (first args)))
+      (op-fn id (get ops (first args)) recv-chan)
 
       :send
       (do
@@ -347,31 +421,37 @@
 (defn- ready-op?
   "Check whether an operator's child operators have been instantiated if it has children,
   to see whether it is ready to be instantiated."
-  [plan op]
+  [tree plan op]
   (let [root-id ROOT-ID
-        child-ids (filter #(and (uuid? %) (not= root-id %)) (:args op))]
+        ops (:ops plan)
+        child-ids (doall (filter #(and (uuid? %) (contains? ops %)) (:args op)))]
+    (log/to :op-b "[ready-op?] op: " op " child-ids: " (seq child-ids) "\ntree: " tree)
     (if (empty? child-ids)
       true
-      (every? #(contains? plan %) child-ids))))
+      (every? #(contains? tree %) child-ids))))
 
+;  NOTE: This could be made more efficient by starting at the outer parameter
+;  nodes and working down to the root, but for now who cares...
 (defn- build-query
   "Iterate over the query operators, instantiating each one after its dependency
   operators have been instantiated."
   [plan]
-  (loop [tree     {}
-         ops (set (keys (:ops plan)))]
-    (if (empty? ops)
-      tree
-      (let [_ (log/to :op-b "ops-count: " (count (:ops plan)))
-            op-id (first (filter #(ready-op? tree (get (:ops plan) %)) ops))
-            _ (log/to :op-b "build-query op-id: " op-id)
-            op (get (:ops plan) op-id)
-            _ (log/to :op-b "build-query op: " op)
-            tree (assoc tree (:id op)
-                        (op-node tree op))]
-        (if (nil? op)
-          nil
-          (recur tree (disj ops op-id)))))))
+  (let [recv-chan (channel)]
+    (loop [tree     {}
+           ops (set (keys (:ops plan)))]
+      (if (empty? ops)
+        tree
+        (let [_ (log/to :op-b "ops-remaining: " ops)
+ ;             _ (log/to :op-b "tree: " tree)
+              op-id (first (filter #(ready-op? tree plan (get (:ops plan) %)) ops))
+              _ (log/to :op-b "build-query op-id: " op-id)
+              op (get (:ops plan) op-id)
+              _ (log/to :op-b "build-query op: " op)
+              tree (assoc tree (:id op)
+                          (op-node plan tree recv-chan op))]
+          (if (nil? op)
+            nil
+            (recur tree (disj ops op-id))))))))
 
 (defn has-projection?
   "Check whether a query plan contains a project operator."
@@ -380,7 +460,7 @@
     true
     false))
 
-(defn- with-result-project
+(defn with-result-project
   "If an explicity projection has not been added to the query plan
   then by default we project on the final element of the path query."
   [plan]
@@ -394,8 +474,7 @@
 (defn query-tree
   "Convert a query plan into a query execution tree."
   [plan]
-  (let [plan (with-result-project plan)
-        tree (build-query plan)]
+  (let [tree (build-query plan)]
     {:type :query-tree
      :ops tree
      :root (:root plan)
@@ -421,9 +500,12 @@
 
 (defn query
   [plan & [param-map]]
-  (log/to :query "[QUERY] ------------------------------------------------\n" plan)
   (assert (query? plan))
-  (let [tree (query-tree plan)
+  (let [plan (with-result-project plan)
+;        _ (print-query plan)
+        plan (optimize-plan plan)
+;        _ (print-query plan)
+        tree (query-tree plan)
         param-map (or param-map {})]
     (run-query tree param-map)
     (doall (query-results tree))))
@@ -433,7 +515,7 @@
   [plan ch]
   (let [ops (map (fn [op]
                    (if (= :send (:type op))
-                     (assoc op :args (concat (:args op) [ch]))
+                     (assoc op :args (vec (concat (:args op) [ch])))
                      op))
                  (vals (:ops plan)))
         ops (reduce (fn [mem op]
@@ -441,16 +523,22 @@
                     {}
                     ops)]
     (log/to :query "[with-send-channel] ops: " ops)
-    (doseq [op (filter #(= :send (:type %)) ops)]
+    (doseq [op (filter #(= :send (:type %)) (vals ops))]
       (log/to :query "[with-send-channel] op: " op))
     (assoc plan :ops ops)))
 
 (defn sub-query
+  "Attaches a destination channel (presumably a network channel) to
+  all send operators and then executes a query so the results will be
+  fed back to the result channel."
   [ch plan & [param-map]]
   (assert (sub-query? plan))
-  (log/to :query "[SUB-QUERY] ------------------------------------------------\n" plan)
-  (log/format :query "channel: %s" ch)
   (let [plan (with-send-channel plan ch)
+        z (with-out-str (print-query plan))
+        _ (log/to :sub-query "[sub-query]:\n" z)
+        plan (optimize-plan plan)
+        z (with-out-str (print-query plan))
+        _ (log/to :sub-query "[sub-query]:\n" z)
         tree (query-tree plan)]
     (run-query tree {})))
 

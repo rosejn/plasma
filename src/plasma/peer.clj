@@ -1,7 +1,7 @@
 (ns plasma.peer
   (:use [lamina core connections]
         [aleph object]
-        [plasma core query]
+        [plasma util core query]
         jiraph.graph)
   (:require [logjam.core :as log]))
 
@@ -73,24 +73,6 @@
               (peer-cache host port))]
     (assoc con :type :peer)))
 
-(defmulti peer-handler
-  (fn [graph msg]
-    (:type msg)))
-
-(defmethod peer-handler :query
-  [graph msg]
-  (log/to :peer "[peer-handler] query")
-  (with-graph graph (query msg)))
-
-(defmethod peer-handler :sub-query
-  [graph msg]
-  (log/to :peer "[peer-handler] sub-query")
-  (with-graph graph (sub-query msg)))
-
-(defmethod peer-handler nil
-  [graph msg]
-  nil)
-
 (defn peer-dispatch [graph ch client-info]
   (log/to :peer "[peer-dispatch] new client: " client-info)
   (receive-all ch
@@ -100,21 +82,31 @@
         (let [id (:id req)
               msg (:body req)]
           (try
-            (let [response (cond
-                                  (= ROOT-ID msg)
-                                  (with-graph graph (root-node))
+            (let [response 
+                  (cond
+                    (= ROOT-ID msg)
+                    (with-graph graph (root-node))
 
-                                  (uuid? msg)  
-                                  (with-graph graph (find-node msg))
+                    (uuid? msg)  
+                    (with-graph graph (find-node msg))
 
-                                  (= :ping msg) 
-                                  :pong
+                    (= :ping msg) 
+                    :pong
 
-                                  :default 
-                                  (peer-handler graph msg))]
+                    (= :query (:type msg))
+                    (do 
+                      (log/to :peer "[peer-handler] query")
+                      (with-graph graph (query msg)))
+
+                    (= :sub-query (:type msg))
+                    (do 
+                      (log/to :peer "[peer-handler] sub-query")
+                      (with-graph graph (sub-query ch msg))))]
+
               (let [res {:type :response :id id :body response}]
                 (log/to :peer "[peer-dispatch] response: " res)
-                (enqueue ch res)))
+                (unless (= :sub-query (:type msg))
+                        (enqueue ch res))))
             (catch Exception e
               (log/to :peer "server error")
               (log/to :peer "------------")
@@ -133,7 +125,9 @@
 ; TODO: handle (re-)connection errors here...?
 (defn- peer-connection
   [peer]
-  (wait-for-result (:connection peer)))
+  (if (= :local-peer (:type peer))
+    (throw (Exception. "Cannot open a connection to a local peer.")))
+  (wait-for-result (:connection peer) 2000))
 
 ;  (let [con ((:connection peer))
 ;        _ (log/to :peer "[peer-connection] con: " con)
@@ -159,11 +153,18 @@
       (wait-for-message result timeout)
       result)))
 
+(defn peer-sub-query
+  [peer q]
+  (log/to :peer "[peer-query] peer: " peer)
+  (let [req {:type :request :id (uuid) :body q}
+        chan   (peer-connection peer)]
+    (enqueue chan req)
+    chan))
 
 (defmethod peer-sender "plasma"
   [url]
-  (let [url (url-map url)]
-    (partial peer-query (peer (:host url) (:port url)))))
+  (let [{:keys [host port]} (url-map url)]
+    (partial peer-sub-query (peer host port))))
 
 (defn- init-peer-graph
   []
@@ -178,7 +179,7 @@
   (let [port (if port port DEFAULT-PORT)
         g (graph path)]
     (log/to :peer "[peer] path:" path " port:" port)
-       {:type :peer
+       {:type :local-peer
         :server (atom (peer-server g port))
         :port port
         :graph g}))

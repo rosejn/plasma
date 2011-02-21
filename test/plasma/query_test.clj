@@ -11,6 +11,7 @@
 
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
+        plan (with-result-project plan)
         tree (query-tree plan)]
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
@@ -29,13 +30,12 @@
     (is (every? uuid? (query q)))
     (is (= #{:kick :bass :snare}
            (set (map :label (query q2))))))
-  (let [p (path [sesh [:sessions :session]
+  (let [p (-> (path [sesh [:sessions :session]
                  synth [sesh :synth]]
                 (where (= (:label synth) :kick)))
-        p (project p 'sesh :label)
-        res (query p)]
+            (project 'sesh :label))]
     (is (= #{:red-pill :take-six}
-           (set (map :label res))))))
+           (set (map :label (query p)))))))
 
 (deftest auto-project-test
   (let [p (path [sesh [:sessions :session]
@@ -70,6 +70,21 @@
     (is (= #{:kick :bass :snare :hat}
            (set (map :label
                      (channel-seq res-chan 1000)))))))
+
+(deftest optimizer-test
+  (let [plan (-> (path [sesh [:sessions :session]
+                        synth [sesh :synth]]
+                   (where (= (:label synth) :kick)))
+               (project 'sesh :label))
+        tree (query-tree plan)
+        optimized (optimize-plan plan)
+        opt-tree (query-tree optimized)]
+    (print-query plan)
+    (print-query optimized)
+    (run-query tree {})
+    (run-query opt-tree {})
+    (is (= (doall (query-results tree))
+           (doall (query-results opt-tree))))))
 
 (use-fixtures :once test-fixture)
 

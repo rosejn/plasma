@@ -23,7 +23,7 @@
 (deftest traverse-op-test
   (let [id (uuid)
         p1 (parameter-op id ROOT-ID)
-        t1 (traverse-op (uuid) nil (:id p1) :music)
+        t1 (traverse-op (uuid) nil nil (:id p1) :music)
         j1 (join-op (uuid) p1 t1)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (is (uuid? (get (first (channel-seq (:out j1) 500)) (:id t1))))
@@ -39,13 +39,13 @@
 ;   tree.
 (defn traverse-base []
   (let [p1 (parameter-op (uuid))
-        t1 (traverse-op (uuid) nil (:id p1) :music)
+        t1 (traverse-op (uuid) nil nil (:id p1) :music)
         j1 (join-op (uuid) p1 t1)
-        t2 (traverse-op (uuid) nil (:id t1) :synths)
+        t2 (traverse-op (uuid) nil nil (:id t1) :synths)
         j2 (join-op (uuid) j1 t2)
-        t3 (traverse-op (uuid) nil (:id t2) :synth)
+        t3 (traverse-op (uuid) nil nil (:id t2) :synth)
         j3 (join-op (uuid) j2 t3)
-        r1 (receive-op (uuid) j3)
+        r1 (receive-op (uuid) j3 (channel))
         tree {:p1 p1
               :t1 t1
               :j1 j1
