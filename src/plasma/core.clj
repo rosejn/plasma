@@ -49,6 +49,11 @@
     (apply add-node! :graph id :id id key-vals)
     id))
 
+(defn node-assoc
+  "Associate key/value pairs with a given node id."
+  [uuid & key-vals]
+  (apply assoc-node! :graph uuid (apply hash-map key-vals)))
+
 (defn root-node
   "Get the UUID of the root node of the graph."
   []

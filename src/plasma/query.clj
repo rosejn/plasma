@@ -534,11 +534,11 @@
   [ch plan & [param-map]]
   (assert (sub-query? plan))
   (let [plan (with-send-channel plan ch)
-        z (with-out-str (print-query plan))
-        _ (log/to :sub-query "[sub-query]:\n" z)
-        plan (optimize-plan plan)
-        z (with-out-str (print-query plan))
-        _ (log/to :sub-query "[sub-query]:\n" z)
+;        z (with-out-str (print-query plan))
+;        _ (log/to :sub-query "[sub-query]:\n" z)
+;        plan (optimize-plan plan)
+;        z (with-out-str (print-query plan))
+;        _ (log/to :sub-query "[sub-query]:\n" z)
         tree (query-tree plan)]
     (run-query tree {})))
 
