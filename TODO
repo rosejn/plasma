@@ -4,6 +4,10 @@
 - net-graph, netgraph
 - p-graph, pgraph
 
+-----------------
+
+* get logjam on clojars
+
 -------------
 
 * the root node of each graph should have a true UUID rather than UUID:ROOT
