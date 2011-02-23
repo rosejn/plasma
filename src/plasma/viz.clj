@@ -8,27 +8,13 @@
 (log/channel :viz :debug)
 
 (defn- tree-vecs* [q root]
-  (let [node (get (:ops q) root)
-        branch? (get op-branch-map (:type node))
-        _ (log/to :viz "type: " (:type node)
-                  "\nbranch: " branch?)
-        children (if branch?
-                   (case (:type node)
-                     :join (:args node)
-                     (:send
-                      :select
-                      :project
-                      :property
-                      :aggregate
-                      :receive) [(first (:args node))])
-                   nil)
-        _ (log/to :viz "children: " children)
+  (let [{:keys [id type deps args]} (get (:ops q) root)
         label (case (:type node)
-                :traverse (str "tr " (second (:args node)))
-                :parameter (str "pr \"" (first (:args node)) "\"")
-                (name (:type node)))
-        label (str label " [" (apply str (take 4 (drop 5 (:id node)))) "]")]
-    (apply vector label (map (partial tree-vecs* q) children))))
+                :traverse (str "tr " (second args))
+                :parameter (str "pr \"" (first args) "\"")
+                (name type))
+        label (str label " [" (apply str (take 4 (drop 5 id))) "]")]
+    (apply vector label (map (partial tree-vecs* q) deps))))
 
 (defn- tree-vecs [q]
   [(tree-vecs* q (:root q))])

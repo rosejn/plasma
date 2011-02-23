@@ -78,7 +78,7 @@
         port (+ 1000 (rand-int 10000))
         local (local-peer "db/local" port)
         local-p (peer "localhost" port)
-        peers (doall 
+        peers (doall
                 (map
                   (fn [n]
                     (let [p (local-peer (str "db/peer-" n) (+ port n 1))]
@@ -105,7 +105,7 @@
               net (node :label :net)]
           (edge root-id net :label :net)
           (doseq [[p peer-root n] peers]
-            (edge net 
+            (edge net
                   (proxy-node peer-root (str "plasma://localhost:" (+ port n 1)))
                   :label :peer))
          ; (println "peers: " (query (path [:net :peer])))
@@ -115,11 +115,11 @@
                   (project 'doc :label :score))
               res (peer-query local-p q 4000)]
           (println "res: " res)
-          (is (= (* 3 n-peers) (count res))))
+          (is (= n-peers (count res))))
       (finally
         ; Ghetto stuff...
         ; Until Clojure supports recur in a try/finally form
-        (peer-close local) 
+        (peer-close local)
         (peer-close (first (nth peers 0)))
         (peer-close (first (nth peers 1)))
         (peer-close (first (nth peers 2)))

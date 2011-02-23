@@ -1,4 +1,9 @@
 pom.xml
+*.log
+db/*
 *jar
 lib
 classes
+.cake
+ext
+test/db

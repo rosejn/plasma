@@ -12,120 +12,111 @@
 ; a graph node.
 
 (log/channel :op :debug)
-(log/channel :flow :op) ; to log values flowing through the operator graph
+(log/channel :flow :op)    ; log values flowing through the operator graph
+(log/channel :close :flow) ; log operators closing their output channels
 
-(def op-branch-map
-  {:project   true
-   :property  true
-   :aggregate true
-   :join      true
-   :traverse  false
-   :parameter false
-   :receive   true
-   :send      true
-   :select    true})
+(defn- close-log
+  [op chan]
+  (on-closed chan #(log/format :close "[%s] closed" op)))
 
-(defn operator-deps-zip [plan end-op-id]
+(defn- flow-log
+  [op chan]
+  (receive-all (fork chan)
+    (fn [pt]
+      (log/format :flow "[%s] %s" op pt)))
+  (close-log op chan))
+
+(defn plan-op
+  "Creates a query plan operator node.  Takes an operator type, dependent
+  operator ids, and the operator parameters."
+  [op & {:keys [deps args]}]
+  {:type op
+   :id (uuid)
+   :deps (vec deps)
+   :args (vec args)})
+
+(defn operator-deps-zip [plan start-id end-id]
   (let [ops (:ops plan)]
     (zip/zipper
       (fn branch? [op-id]
-        (if (= end-op-id op-id)
-          false
-          (get op-branch-map (:type (get ops op-id)))))
+        (and (not= end-id op-id)
+             (not (empty? (get-in ops [op-id :deps])))))
 
       (fn children [op-id]
-        (if (= end-op-id op-id)
-          []
-          (let [op (get ops op-id)
-                {:keys [type args]} op]
-            (case type
-              :property [(first args)]
-              :project [(first args)]
-              :aggregate [(first args)]
-              :join [(second args) (first args)]
-              :send [(first args)]
-              :receive [(first args)]
-              :select [(first args)]))))
+        (get-in ops [op-id :deps]))
 
-      (fn make-op [op args]
-        (assoc op :args args))
+      (fn make-op [op-id deps]
+        (assoc (get ops op-id) :deps deps))
 
-      (:root plan))))
+      start-id)))
 
 (defn sub-query-ops
   "Returns the operator tree from the root out to the end-id,
   and no further."
-  [plan end-node-id]
+  [plan start-id end-id]
   (log/to :op "[sub-query-ops] start-plan: " plan)
   (let [ops (:ops plan)]
-    (loop [loc (operator-deps-zip plan end-node-id)
+    (loop [loc (operator-deps-zip plan start-id end-id)
            sub-query-ops {}]
       (let [op-id (zip/node loc)
             op-node (get ops op-id)]
-        (log/to :op "[sub-query-ops] op-node: " op-node)
-        (if (or (= end-node-id op-id)
-                (zip/end? loc))
+        (log/to :sub-query "[sub-query-ops] op-node: " op-node)
+        (if (zip/end? loc)
           (assoc sub-query-ops op-id op-node)
           (recur (zip/next loc)
                  (assoc sub-query-ops op-id op-node)))))))
 
-(defn build-sub-query 
-  [plan end-op-id src-node-id]
+(defn build-sub-query
+  "Generates a sub-query plan from the "
+  [plan start-node end-id]
   (let [recv-op  (first (filter #(= :receive (:type %)) (vals (:ops plan))))
-        new-root (first (:args recv-op))
-        new-plan (assoc plan :root new-root)
-        new-ops  (sub-query-ops new-plan end-op-id)
+        new-root (first (:deps recv-op))
+        new-ops  (sub-query-ops plan new-root end-id)
         ; connect a send op at the root
-        s-id (uuid)
-        send-op {:type :send :id s-id :args [new-root]}
+        send-op (plan-op :send :deps [new-root])
+        s-id (:id send-op)
 
         ; connect a new param op that will start the query at the source of the proxy node
-        p-id (uuid)
-        param-op {:type :parameter :id p-id :args [src-node-id]}
+        param-op (plan-op :parameter :args [start-node])
+        p-id (:id param-op)
 
         ; hook the new param node up to the join that feeds the traversal we need to start at
-        _ (log/to :op "[build-sub-query] end-op-id: " end-op-id "\nnew-ops: " new-ops)
+        _ (log/to :sub-query "[build-sub-query] end-id: " end-id "\nnew-ops: " new-ops)
         end-join-op (first (filter #(and (= :join (:type %))
-                                         (= end-op-id (second (:args %)))) 
+                                         (= end-id (second (:deps %))))
                                    (vals new-ops)))
-        _ (log/to :op "[build-sub-query] end-join-op: " end-join-op)
+        _ (log/to :sub-query "[build-sub-query] end-join-op: " end-join-op)
         new-join-op (assoc end-join-op
-                           :args [p-id (second (:args end-join-op))])
-        _ (log/to :op "[build-sub-query] new-join-op: " new-join-op)
+                           :deps [p-id (second (:deps end-join-op))])
+        _ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
 
         ; and modify the traverse-op's src-key so it uses the new param node's value
-        trav-op (get new-ops end-op-id)
+        trav-op (get new-ops end-id)
         trav-op (assoc trav-op :args [p-id (second (:args trav-op))])
-        _ (log/to :op "[build-sub-query] new-join-op: " new-join-op)
+        _ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
 
-        new-ops (assoc new-ops 
+        new-ops (assoc new-ops
                        (:id new-join-op) new-join-op
                        (:id trav-op) trav-op
                        s-id send-op
                        p-id param-op)]
-    (assoc new-plan
+    (assoc plan
            :root (:id send-op)
-           :params {src-node-id p-id}
+           :params {start-node p-id}
            :type :sub-query
            :ops new-ops)))
 
-(defn remote-sub-query 
+(defn remote-sub-query
   "Generates a sub-query for the given plan, starting at the receive operator
   and ending at the end-id.  The sub-query will begin traversal at the
   src-node-id.  It sends the sub-query to the remote peer, and returns a channel
   that will receive the stream of path-tuple results from the execution of the
   sub-query."
-  [plan end-id src-node-id url]
-  (let [sub-query (build-sub-query plan end-id src-node-id)
+  [plan end-id start-id url]
+  (let [sub-query (build-sub-query plan start-id end-id)
         sender (peer-sender url)]
     (log/to :op "[remote-sub-query] sub-query: " sub-query)
     (sender sub-query)))
-
-(defn- flow-log 
-  [op chan]
-  (receive-all (fork chan)
-    (fn [pt]
-      (log/format :flow "[%s] out: %s" op pt)))) 
 
 (defn parameter-op
   "An operator designed to accept a query parameter.  Forwards the
@@ -134,39 +125,44 @@
   [id & [param-name]]
   (let [in (channel)
         out (map* (fn [val] {id val}) in)]
+    (on-closed in #(close out))
     (flow-log "parameter" out)
-    (on-closed in #(do
-                     (log/to :flow "[parameter] closed")
-                     (close out)))
+    (close-log "parameter" out)
   {:type :parameter
    :id id
    :in in
    :out out
    :name param-name}))
 
-; TODO: Need to register remote queries so we can close only after all
-; results have been received or a timeout has occurred.
 (defn receive-op
   "A receive operator to merge values from local query processing and
-  remote query results."
-  [id left in]
+  remote query results.
+  
+  Network receive channels are sent to the remotes channel so we can wire them into
+  the running query.
+  "
+  [id left remotes]
   (let [out (channel)
-        left-out (:out left)]
+        left-out (:out left)
+        sub-chans (atom [])
+        all-closed (fn [] 
+                     (when (and (closed? left-out)
+                              (every? closed? @sub-chans))
+                       (close out)))]
+    ; Wire remote results of sub-queries into the graph
+    (receive-all remotes
+      (fn [chan]
+        (swap! sub-chans conj chan)
+        (siphon chan out)
+        (on-closed chan all-closed)))
+
     (siphon left-out out)
-    (siphon in out)
+    (on-closed left-out all-closed)
     (flow-log "receive" out)
-
-    ;(on-closed left-out #(do
-    ;                       (log/to :op "[receive] closed...")
-    ;                       (close out)))
-
-    (on-closed in #(do
-                     (log/to :flow "[receive] closed...")
-                     (close out)))
 
   {:type :receive
    :id id
-   :in in
+   :in remotes
    :out out}))
 
 (defn send-op
@@ -189,13 +185,6 @@
    :id id
    :dest dest})
 
-(defn recv-from
-  "Forward results from a sub-query result channel to a receive channel.
-  Could just use siphon, but it's nice to have logging..."
-  [res-chan recv-chan]
-  (siphon res-chan recv-chan)
-  (flow-log "recv-from" recv-chan))
-
 (defn traverse-op
 	"Uses the src-key to lookup a node ID from each PT in the in queue.
  For each source node traverse the edges passing the edge-predicate, and put
@@ -209,22 +198,24 @@
     (receive-all in
       (fn [pt]
         (when pt
-          (let [src-id (get pt src-key)]
-            (log/to :flow "[traverse] in:" pt)
-            (log/to :flow "[traverse] src: " src-id " - " edge-predicate " -> "
-                    (count (get-edges src-id edge-pred-fn)) " edges")
-            (if (proxy-node? src-id)
-              (do
-                (log/to :flow "[traverse] proxy-node:" (:proxy (find-node src-id)))
-                (recv-from 
-                  (remote-sub-query plan id src-id (:proxy (find-node src-id)))
-                  recv-chan))
-              (let [edges (get-edges src-id edge-pred-fn)
-                    tgts (keys edges)
-                    path-tuples (map #(assoc pt id %) tgts)]
-                (doseq [path-tuple path-tuples]
-                  (log/to :flow "[traverse] out: " (get path-tuple id))
-                  (enqueue out path-tuple))))))))
+          (let [src-id (get pt src-key)
+                src-node (find-node src-id)]
+            (cond
+              (proxy-node? src-id)
+              (let [proxy (:proxy src-node)]
+                    (log/to :flow "[traverse] proxy:" proxy)
+                    ; Send the remote-sub-query channel to the recv operator
+                    (enqueue recv-chan
+                             (remote-sub-query plan id src-id proxy)))
+
+              :default
+              (let [tgts (keys (get-edges src-id edge-pred-fn))]
+                (log/to :flow "[traverse] " 
+                        src-id " - " 
+                        edge-predicate " -> "
+                        "<" (count tgts) " matches>")
+                (siphon (apply channel (map #(assoc pt id %) tgts))
+                        out)))))))
 
     (on-closed in #(do
                      (log/to :op "[traverse] closed")
@@ -244,14 +235,10 @@
         right-in  (:in right)
         right-out (:out right)
         out				(channel)]
-    (log/to :op-b "[join] left: " left " right: " right)
     (siphon left-out right-in)
-    (on-closed left-out #(close right-in))
-
     (siphon right-out out)
-    (on-closed right-out #(do
-                            (log/to :op "[join] closed")
-                            (close out)))
+    (on-closed left-out #(close right-in))
+    (on-closed right-out #(close out))
     (flow-log "join" out)
     {:type :join
      :id id
@@ -272,13 +259,13 @@
         out (channel)
 				agg-fn (or agg-fn identity)]
     (siphon left-out buf)
+    (flow-log "aggregate in" left-out)
     (on-closed left-out
       (fn []
         (let [aggregated (agg-fn (channel-seq buf))]
           (log/to :op "[aggregate] count: " (count aggregated))
           (doseq [item aggregated]
             (enqueue out item)))
-        (log/to :op "[aggregate] closed")
         (close out)))
     (flow-log "aggregate" out)
     {:type :aggregate
@@ -341,12 +328,14 @@
                  [(apply max-key key-fn arg-seq)])]
     (aggregate-op left max-fn)))
 
-(defn- do-predicate [props predicate]
-  (let [prop (get props (:property predicate))
-        op (ns-resolve *ns* (:operator predicate))
-        result (op prop (:value predicate))]
-    (log/to :op "[do-predicate] prop: " prop " op: " op "result: " result)
-      result))
+(def PREDICATE-OPS
+  {'= =
+   '== ==
+   'not= not=
+   '< <
+   '> >
+   '<= <=
+   '>= >=})
 
 ; Expects a predicate in the form of:
 ; {:type :predicate
@@ -363,15 +352,20 @@
     (siphon (filter*
               (fn [pt]
                 (let [node-id (get pt select-key)
-                      props (get pt node-id)]
-                  (log/format :flow
-                              "[select-op] skey: %s\n\tnode-id: %s\n\tpt: %s\n\tprops: %s\n\tpredicate: %s" 
-                              select-key node-id pt props predicate)
-                (do-predicate props predicate)))
+                      node    (get pt node-id)
+                      {:keys [property operator value]} predicate
+                      pval (get node property)
+                      op (get PREDICATE-OPS operator)
+                      result (op pval value)]
+                  (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s" 
+                              operator property value 
+                              operator pval value 
+                              result)
+                  result))
               left-out)
             out)
     (on-closed left-out #(close out))
-;    (flow-log "select" out)
+    (flow-log "select" out)
     {:type :select
      :id id
      :select-key select-key
@@ -384,23 +378,18 @@
   properties for operations like select and sort that rely on property
   values already being in the PT map."
   [id left pt-key props]
-  (log/to :op "[property-op] loader for props: " props)
   (let [left-out (:out left)
         out (map* (fn [pt]
-                    (log/to :flow "[property] pt: " pt)
-                    (let [node-id (get pt pt-key)
-                          node (find-node node-id)
-                          _ (log/to :flow "[property] node: " node
-                                    " props: " props)
-                          vals (select-keys node props)
+                    (let [node-id  (get pt pt-key)
+                          node     (find-node node-id)
+                          vals     (select-keys node props)
                           existing (get pt node-id)
-                          pt  (assoc pt node-id (merge existing vals))]
-                      (log/to :flow "[property] pt out: " pt)
+                          pt       (assoc pt 
+                                          node-id (merge existing vals))]
                       pt))
                   left-out)]
-    (on-closed left-out #(do
-                           (log/to :flow "[property] closed...")
-                           (close out)))
+    (on-closed left-out #(close out))
+    (flow-log "property" out)
   {:type :property
    :id id
    :left left
@@ -413,24 +402,13 @@
 	[id left project-key props?]
   (let [left-out (:out left)
         out (map* (fn [pt]
-                    (log/to :flow "[project] proj-key: " project-key "\npt: " pt)
                     (let [node-id (get pt project-key)]
                       (if props?
                         (get pt node-id)
-                        node-id))) 
+                        node-id)))
                   left-out)]
-    (on-closed left-out #(do
-                           (log/to :flow "[project] closed...")
-                           (close out)))
-    
-    (comment receive-all left-out
-      (fn [pt]
-        (when pt
-          (log/to :op "[project] out: " (get pt project-key))
-					(enqueue out (get pt project-key)))
-        (when (nil? pt)
-          (log/to :op "[project] got nil!!!!!!!!!!!!!")
-          (close out))))
+    (on-closed left-out #(close out))
+    (flow-log "project" out)
     {:type :project
      :id id
      :project-key project-key

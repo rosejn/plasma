@@ -12,9 +12,9 @@
         p2 (parameter-op id)]
     (enqueue-and-close (:in p1) 42)
     (enqueue-and-close (:in p2) ROOT-ID)
-    (is (= {id 42} 
+    (is (= {id 42}
            (first (lazy-channel-seq (:out p1)))))
-    (is (= {id ROOT-ID} 
+    (is (= {id ROOT-ID}
            (first (lazy-channel-seq (:out p2)))))
     (is (and
           (closed? (:out p1))
@@ -204,7 +204,7 @@
   (choose-op-test)
   (send-receive-op-test))
 
-(defn test-ns-hook 
+(defn test-ns-hook
   []
   (test-fixture ops-test))
 

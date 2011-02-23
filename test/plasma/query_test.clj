@@ -1,5 +1,5 @@
 (ns plasma.query-test
-  (:use [plasma core query viz]
+  (:use [plasma core operator query viz]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
@@ -53,7 +53,8 @@
 (defn append-send-node
   [plan]
   (let [{:keys [ops root]} plan
-        op (plan-op :send root)
+        op (plan-op :send 
+                    :deps [root])
         ops (assoc ops (:id op) op)  ; add to ops
         plan (assoc plan
                     :type :sub-query
@@ -79,8 +80,8 @@
         tree (query-tree plan)
         optimized (optimize-plan plan)
         opt-tree (query-tree optimized)]
-    (print-query plan)
-    (print-query optimized)
+    ;(print-query plan)
+    ;(print-query optimized)
     (run-query tree {})
     (run-query opt-tree {})
     (is (= (doall (query-results tree))
