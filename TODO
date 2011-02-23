@@ -4,14 +4,6 @@
 - net-graph, netgraph
 - p-graph, pgraph
 
--------------
-
-* the root node of each graph should have a true UUID rather than UUID:ROOT
-because when they are proxy nodes they will need to have something other
-than the local-root id.
- - instead use UUID:META for the local meta-data node that loads the root-id
-   and any other metadata...
-
 -----------
 
 == Moving to defrecord style:
@@ -25,8 +17,6 @@ methods:
 ----------------
 
 * have property operator first check in the path-tuple so it doesn't go to disk unneccessarily
-
-* connect and transmit with send and receive ops
 
 * subscribe to a remote node (get a channel of events)
  - send uuid to peer, which goes into a subscription map
@@ -45,32 +35,6 @@ Operators:
 
 * Add regular expression edge predicates for traverse operator
 
-* get rid of the recv argument to the traversal operator
-  - instead pass query plan as first arg to all ops, and reference implicit
-    receive node there.
-
-Distribution:
-
-Using the query tree dependency zipper, generate a sub-query that can be
-shipped to a remote peer.  It takes the UUID of the traversal node that ran
-into the proxy and the root operator to start from (a receive-op).
-
-* need to make it smart so it only returns up to the aggregation point for
-integrating the results of remote queries
-
-* need to modify the existing query tree to hook in receive channels to get
-the results back (emit nil after a timeout to end query)
-
-* need to stick a send onto the root of the remote query parameterized with
-the local connection info.
-
-Questions:
-
-* transmit only node UUIDs for query results, or full nodes?
- - send projected node with ID and properties, store in local node-cache
-
 -------------------------------
 
 * add versioning by saving previous versions with a new uuid and a link
-
-* add some kind of logging database to support message queuing
