@@ -1,2 +1,8 @@
 Plasma graph networking.
 
+== Setup
+
+Copy the script/cake file to somewhere on your PATH and then execute:
+
+  $ cake
+

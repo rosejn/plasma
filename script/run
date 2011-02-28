@@ -1,0 +1,3 @@
+#!/bin/bash
+
+rlwrap java -cp plasma-0.1.0-SNAPSHOT-standalone.jar -Djava.library.path="lib/ext/native:lib/native:lib/dev/native" clojure.main
