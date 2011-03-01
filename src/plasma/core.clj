@@ -6,7 +6,7 @@
     [jiraph graph]))
 
 (def META-ID "UUID:META")
-;
+
 ; Special uuid used to query for a graph's root node.
 (def ROOT-ID "UUID:ROOT")
 
@@ -24,7 +24,7 @@
      :host host
      :port (Integer. port)}))
 
-(defmulti peer-sender 
+(defmulti peer-sender
   (fn [url]
     (:proto (url-map url))))
 
@@ -39,7 +39,7 @@
   (and (string? s)
        (= (seq "UUID:") (take 5 (seq s)))))
 
-(defn node 
+(defn node
   "Create a node in the current graph that contains the given key-value pairs. If a UUID string is passed as the first argument then it will be used for the new node, otherwise a new one will be generated."
   [& key-vals]
   (let [[id key-vals] (if (and (odd? (count key-vals))
@@ -59,11 +59,11 @@
   []
   (:root (meta *graph*)))
 
-(defn find-node 
+(defn find-node
   "Lookup a node map by UUID."
   [uuid]
   (unless *graph*
-    (throw (Exception. "Cannot find-node without a bound graph. 
+    (throw (Exception. "Cannot find-node without a bound graph.
 For example:\n\t(with-graph G (find-node id))\n")))
   (let [uuid (if (= uuid ROOT-ID)
                (root-node)
@@ -82,17 +82,17 @@ For example:\n\t(with-graph G (find-node id))\n")))
   (let [g {:graph (layer path)}]
     (with-graph g
       (let [meta (find-node META-ID)
-            meta (if meta 
-                   meta 
+            meta (if meta
+                   meta
                    (init-new-graph))]
         (with-meta g meta)))))
 
-(defn proxy-node 
+(defn proxy-node
   "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."
   [uuid url]
   (node uuid :proxy url))
 
-(defn proxy-node? 
+(defn proxy-node?
   "Check whether the node with the given UUID is a proxy node."
   [uuid]
   (contains? (find-node uuid) :proxy))

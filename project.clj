@@ -6,6 +6,7 @@
                  [jiraph "0.5.0-SNAPSHOT"]
                  [clojure-protobuf "0.2.4"]
                  [vijual "0.1.0-SNAPSHOT"]
-                 [logjam "0.1.0-SNAPSHOT"]])
+                 [logjam "0.1.0-SNAPSHOT"]
+                 [ring/ring-core "0.3.1"]])
 ;                 [org.clojars.overtone/vijual "0.2.1"]])
 

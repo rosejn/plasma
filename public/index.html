@@ -1,0 +1,32 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN"
+   "http://www.w3.org/TR/html4/strict.dtd">
+
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<title>Plasma Browser</title>
+	<link href="css/style.css" rel="stylesheet" type="text/css">
+	<script src="js/jquery.min.js"></script>
+	<script src="js/arbor.js"></script>  
+	<script src="js/graph.js"></script>
+</head>
+<body>
+  <div id="header">Plasma Browser</div>
+	<div id="container">
+	<div id="query-view">
+  	<form id="query-form">
+    	<label for="query-text">Query:</label>
+  	  <textarea id="query-text" rows=6 cols=40></textarea></div>
+  		<input id="run-btn" type="submit" value="Run"></input>
+		</form>
+	</div>
+	<div id="status">Status...</div>
+
+	<canvas id="graph-view" width="800" height="400"></canvas>
+  <div id="property-view">
+		<h4>Properties:</div>
+		<div id="property-pane"></div>
+  </div>
+	<div id="footer"></div>
+</body>
+</html>
