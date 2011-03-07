@@ -1,5 +1,5 @@
 (ns plasma.operator
-  (:use plasma.core
+  (:use [plasma core util]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -137,7 +137,7 @@
 (defn receive-op
   "A receive operator to merge values from local query processing and
   remote query results.
-  
+
   Network receive channels are sent to the remotes channel so we can wire them into
   the running query.
   "
@@ -145,7 +145,7 @@
   (let [out (channel)
         left-out (:out left)
         sub-chans (atom [])
-        all-closed (fn [] 
+        all-closed (fn []
                      (when (and (closed? left-out)
                               (every? closed? @sub-chans))
                        (close out)))]
@@ -185,6 +185,16 @@
    :id id
    :dest dest})
 
+(defn- predicate-fn
+  "Create an edge predicate function, based on the type of predicate object supplied."
+  [pred]
+  (cond
+    (keyword? pred) #(= pred (:label %1))
+    (regexp? pred) #(re-find pred %)
+    (fn? pred) pred
+    :default 
+    (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
+
 (defn traverse-op
 	"Uses the src-key to lookup a node ID from each PT in the in queue.
  For each source node traverse the edges passing the edge-predicate, and put
@@ -192,9 +202,7 @@
 	[id plan recv-chan src-key edge-predicate]
   (let [in  (channel)
         out (channel)
-        edge-pred-fn (if (keyword? edge-predicate)
-                       #(= edge-predicate (:label %1))
-                       edge-predicate)]
+        edge-pred-fn (predicate-fn edge-predicate)]
     (receive-all in
       (fn [pt]
         (when pt
@@ -210,8 +218,8 @@
 
               :default
               (let [tgts (keys (get-edges src-id edge-pred-fn))]
-                (log/to :flow "[traverse] " 
-                        src-id " - " 
+                (log/to :flow "[traverse] "
+                        src-id " - "
                         edge-predicate " -> "
                         "<" (count tgts) " matches>")
                 (siphon (apply channel (map #(assoc pt id %) tgts))
@@ -357,9 +365,9 @@
                       pval (get node property)
                       op (get PREDICATE-OPS operator)
                       result (op pval value)]
-                  (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s" 
-                              operator property value 
-                              operator pval value 
+                  (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s"
+                              operator property value
+                              operator pval value
                               result)
                   result))
               left-out)
@@ -381,12 +389,13 @@
   (let [left-out (:out left)
         out (map* (fn [pt]
                     (let [node-id  (get pt pt-key)
-                          node     (find-node node-id)
-                          vals     (select-keys node props)
-                          existing (get pt node-id)
-                          pt       (assoc pt 
-                                          node-id (merge existing vals))]
-                      pt))
+                          existing (get pt node-id)]
+                      ; Only load props from disk of they don't already exist
+                      (if (every? #(contains? existing %) props)
+                        pt
+                        (let [node     (find-node node-id)
+                              vals     (select-keys node props)]
+                          (assoc pt node-id (merge existing vals))))))
                   left-out)]
     (on-closed left-out #(close out))
     (flow-log "property" out)

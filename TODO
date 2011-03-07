@@ -16,9 +16,8 @@ methods:
 
 ----------------
 
-* have property operator first check in the path-tuple so it doesn't go to disk unneccessarily
-
-* subscribe to a remote node (get a channel of events)
+* subscribe to a (local or remote) node 
+ - return a channel to receive update events
  - send uuid to peer, which goes into a subscription map
  - node update functions send event to subscribers after updates
 

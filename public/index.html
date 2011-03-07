@@ -8,25 +8,31 @@
 	<link href="css/style.css" rel="stylesheet" type="text/css">
 	<script src="js/jquery.min.js"></script>
 	<script src="js/arbor.js"></script>  
+	<script src="js/uuid.js"></script>
+	<script src="js/prettyprint.js"></script>
 	<script src="js/graph.js"></script>
 </head>
 <body>
-  <div id="header">Plasma Browser</div>
-	<div id="container">
-	<div id="query-view">
-  	<form id="query-form">
-    	<label for="query-text">Query:</label>
-  	  <textarea id="query-text" rows=6 cols=40></textarea></div>
-  		<input id="run-btn" type="submit" value="Run"></input>
-		</form>
-	</div>
-	<div id="status">Status...</div>
-
-	<canvas id="graph-view" width="800" height="400"></canvas>
-  <div id="property-view">
-		<h4>Properties:</div>
-		<div id="property-pane"></div>
+<div id="container">
+  <div id="header">
+    <h3>Plasma Browser</h3>
   </div>
-	<div id="footer"></div>
+  <div id="query-view">
+    <form id="query-form">
+      <label for="query-text">Query:</label>
+      <br/>
+      <textarea id="query-text" rows=6 cols=40></textarea>
+      <input id="run-btn" type="submit" value="Run"></input>
+    </form>
+  </div>
+  <div id="status">Status...</div>
+
+  <canvas id="graph-view" width="800" height="400"></canvas>
+  <div id="property-view">
+    <h4>Properties:</div>
+    <div id="property-pane"></div>
+  </div>
+  <div id="footer"></div>
+</div>
 </body>
 </html>

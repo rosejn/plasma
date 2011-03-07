@@ -68,7 +68,10 @@ For example:\n\t(with-graph G (find-node id))\n")))
   (let [uuid (if (= uuid ROOT-ID)
                (root-node)
                uuid)]
-    (get-node :graph uuid)))
+    (if-let [node (get-node :graph uuid)]
+      (assoc node
+             :id uuid
+             :type :node))))
 
 (defn- init-new-graph
   []

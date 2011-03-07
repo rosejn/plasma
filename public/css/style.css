@@ -7,23 +7,38 @@ body {
   margin:0;
   padding: 20px;
   font: 12px/17px Arial, sans-serif;
-  background: #222;
+  background: #efefef;
 }
 
 div#container {
 	margin: 0 auto;
 	width: 820px;
-	background: blue;
+	background: #eee;
 }
 
 #query-view {
 	float: left;
 	max-width: 400px;
+  margin-bottom: 1em;
+}
+
+#query-form label {
+  font-weight: bold;
+}
+
+#query-form input {
+  float: right;
+  margin-right: 57px;
 }
 
 #status {
-	float: right;
-	max-width: 400px;
+	float: left;
+  width: 370px;
 	height: 100px;
+	border: 1px solid black;
+  padding: 1em;
+}
+
+#graph-view {
 	border: 1px solid black;
 }

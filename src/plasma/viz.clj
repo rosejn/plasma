@@ -19,7 +19,9 @@
 (defn- tree-vecs [q]
   [(tree-vecs* q (:root q))])
 
-(defn print-query [plan]
+(defn print-query 
+  "Print the query operator tree for a query plan."
+  [plan]
   (vij/draw-tree (tree-vecs plan)))
 
 (defn- dot-id
@@ -41,7 +43,7 @@
     (doseq [[tgt-id props] edges]
       (dot-edge d-id (dot-id tgt-id) props))))
 
-(defn dot-graph
+(defn- dot-graph
   "Output the dot (graphviz) graph description for the given graph."
   [g]
   (with-graph g
@@ -56,3 +58,26 @@
   [g path]
   (spit path (dot-graph g)))
 
+(defn- dot-op
+  [{:keys [id type args]}]
+  (let [label (case type 
+                :traverse (str "traverse: [" (second args) "]")
+                :parameter (str "param: " (if (uuid? (first args))
+                                            (apply str (drop 5 (first args)))
+                                            (first args)))
+                (name type))]
+        (str "\t" (dot-id id) " [label=\"" label "\"]")))
+
+(defn- dot-plan
+  [plan]
+  (with-out-str
+    (println "digraph Plan {\n\tnode [shape=plaintext]")
+    (doseq [[id op] (:ops plan)]
+      (println (dot-op op))
+      (doseq [edge (:deps op)]
+        (println (str "\t" (dot-id id) " -> " (dot-id edge)))))
+    (println "}")))
+
+(defn save-dot-plan
+  [plan path]
+  (spit path (dot-plan plan)))

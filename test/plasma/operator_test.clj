@@ -69,7 +69,7 @@
                   :operator '>
                   :value 0.3}
         prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
-        sel (select-op (uuid) prop-load (:id t3) sel-pred)
+        sel  (select-op (uuid) prop-load (:id t3) sel-pred)
         proj (project-op (uuid) sel (:id t3) false)
         tree (assoc tree
               :sel sel

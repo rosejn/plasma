@@ -1,34 +1,45 @@
 (ns plasma.web
-  (:use [ring.middleware file]
+  (:use [ring.middleware file file-info]
         [lamina.core :exclude (restart)]
         [aleph formats http tcp]
         [plasma core query]
-        [jiraph graph])
+        [jiraph graph]
+        [clojure.contrib json]
+        [clojure stacktrace])
   (:require [logjam.core :as log]))
 
-(def GRAPH (graph "db/web"))
+(defonce GRAPH (graph "db/web"))
+(def DEFAULT-PORT 4242) ; Remember: must be set in javascript client also.
 
-(defn request-handler 
-  [ch]
-  (fn [msg]
-    (when msg
-      (log/to :web "\nMsg: " msg)
-      (try
-        (let [res (with-graph GRAPH
-                    (load-string 
-                      (str 
-                        "(require 'plasma.web)
-                         (in-ns 'plasma.web)
-                        " msg)))]
-          (log/to :web "Result: " res)
-          (enqueue ch (pr-str res)))
-        (catch Exception e
-          (log/to :web "Exception: " e))))))
+(defn rpc-handler
+  [req]
+  (log/to :web "rpc-handler: " req)
+  (let [res 
+        (case (:method req)
+          "query"
+          (with-graph GRAPH
+                      (load-string
+                        (str
+                          "(require 'plasma.web)
+                          (in-ns 'plasma.web)
+                          " (first (:params req))))))]
+    {:result res
+     :error nil
+     :id (:id req)}))
 
-(defn plasma-handler 
-  [channel]
-  (swap! clients conj channel)
-  (receive-all channel (request-handler channel)))
+(defn request-handler
+  [ch msg]
+  (when msg
+    (log/to :web "\nMsg: " msg)
+    (try
+      (let [request (read-json msg true)
+            _ (log/to :web "request: " request)
+            res (rpc-handler request)]
+        (log/to :web "Result: " res)
+        (enqueue ch (json-str res)))
+      (catch Exception e
+        (log/to :web "Request Exception: " e)
+        (log/to :web "Trace: " (with-out-str (print-stack-trace e)))))))
 
 (defn dispatch-synchronous
   [request]
@@ -39,24 +50,27 @@
 
 (def sync-app
   (-> dispatch-synchronous
-    (wrap-file "public")))
+    (wrap-file "public")
+    (wrap-file-info)))
 
-(defn server [channel request]
-  (log/to :web "app request: " (str request))
+(defn server [ch request]
+  (log/to :web "client connect: " (str request))
   (if (:websocket request)
-    (plasma-handler channel)
+    (receive-all ch 
+                 (fn [msg]
+                   (request-handler ch msg)))
     (if-let [sync-response (sync-app request)]
-      (enqueue channel sync-response)
-      (enqueue channel {:status 404 :body "Page Not Found"}))))
+      (enqueue ch sync-response)
+      (enqueue ch {:status 404 :body "Page Not Found"}))))
 
-(defonce server* (atom identity))
+(defonce server* (atom #()))
 
 (defn start []
   (reset! server* (start-http-server server {:port 4242 :websocket true})))
 
 (defn stop []
   (@server*)
-  (reset! server* identity))
+  (reset! server* #()))
 
 (defn restart []
   (stop)
