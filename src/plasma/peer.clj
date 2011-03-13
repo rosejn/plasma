@@ -67,14 +67,18 @@
 (defn peer
   "Returns a peer for the given host and port.
   Uses a cached connection when available."
-  [host port]
-  (let [con (if-let [c (get @peer-pool* [host port])]
-              (refresh-peer c)
-              (peer-cache host port))]
-    (assoc con :type :peer)))
+  ([host]
+   (peer host DEFAULT-PORT))
+  ([host port]
+   (let [con (if-let [c (get @peer-pool* [host port])]
+               (refresh-peer c)
+               (peer-cache host port))]
+     (assoc con :type :peer))))
 
-(defn peer-dispatch [graph ch client-info]
+(defn peer-dispatch [peer ch client-info]
   (log/to :peer "[peer-dispatch] new client: " client-info)
+  (enqueue (:on-connect peer) {:client-info client-info
+                               :chan ch})
   (receive-all ch
     (fn [req]
       (when req
@@ -82,24 +86,28 @@
         (let [id (:id req)
               msg (:body req)]
           (try
-            (let [response 
+            (let [graph (:graph peer)
+                  response
                   (cond
                     (= ROOT-ID msg)
                     (with-graph graph (root-node))
 
-                    (uuid? msg)  
+                    (uuid? msg)
                     (with-graph graph (find-node msg))
 
-                    (= :ping msg) 
+                    (= :ping msg)
                     :pong
 
                     (= :query (:type msg))
-                    (do 
+                    (do
                       (log/to :peer "[peer-handler] query")
+                      (enqueue (:on-query peer) {:chan ch
+                                                 :query msg
+                                                 :client-info client-info})
                       (with-graph graph (query msg)))
 
                     (= :sub-query (:type msg))
-                    (do 
+                    (do
                       (log/to :peer "[peer-handler] sub-query")
                       (with-graph graph (sub-query ch msg))))]
 
@@ -114,13 +122,13 @@
               (log/to :peer "caused exception: " e (.printStackTrace e)))))))))
 
 (defn- peer-server
-  "Listens on port responding to queries against graph.
-  Returns a function that will stop the server when called."
-  [graph port]
-  (log/to :peer "[peer-server] starting on port: " port)
-  (start-object-server
-    (partial peer-dispatch graph)
-    {:port port}))
+  "Listen on port, responding to queries against the peer graph."
+  [peer]
+  (log/to :peer "[peer-server] starting on port: " (:port peer))
+  (let [s (start-object-server
+            (partial peer-dispatch peer)
+            {:port (:port peer)})]
+    (reset! (:server peer) s)))
 
 ; TODO: handle (re-)connection errors here...?
 (defn- peer-connection
@@ -172,22 +180,48 @@
     (let [net  (node :label :net)]
       (edge (root-node) net :label :net))))
 
+;(log/to :peer "[peer] path:" path " port:" port)
+
 (defn local-peer
   "Create a new peer using a graph database located at path, optionally
   specifying the port number to listen on."
   [path & [port]]
   (let [port (if port port DEFAULT-PORT)
-        g (graph path)]
-    (log/to :peer "[peer] path:" path " port:" port)
-       {:type :local-peer
-        :server (atom (peer-server g port))
-        :port port
-        :graph g}))
+        g (graph path)
+        p {:type :local-peer
+           :server (atom nil)
+           :port port
+           :graph g
+           :on-connect (channel)
+           :on-query (channel)}]
+    (peer-server p)
+    p))
+
+(defn on-peer-connect
+  "Returns an event channel of incoming connection events.
+  The event is a map containing a channel to the remote peer
+  and the client information for the remote peer.
+    {:chan ch
+     :client-info client-info}
+  "
+  [p]
+  (fork (:on-connect p)))
+
+(defn on-peer-query
+  "Returns an event channel of incoming query events.
+  The event is a map containing a channel to the remote peer, the query,
+  and the client information for the remote peer.
+    {:chan ch
+    :query msg
+    :client-info client-info}
+  "
+  [p]
+  (fork (:on-query p)))
 
 (defn peer-listen
   "Start listening for connections on the given peer."
   [p]
-  (reset! (:server p) (peer-server (:graph p) (:port p))))
+  (peer-server p))
 
 (defn peer-close
   "Stop listening for incoming connections."
@@ -200,3 +234,104 @@
                                 (close-connection (:connection p)))))
 
 
+(comment
+(defprotocol Peer
+  (id [])
+  (url [])
+  (onNewConnection [])
+  (query [])
+  (numPeers [])
+  (close []))
+
+; check-live-peers: ping all peers and drop ones that don't respond
+; use Upnp library to figure out public port and IP to create URL
+
+; peer config options
+; :port
+; :max-peers
+; :peer-id
+
+(defprotocol PeerConnection
+  (setKey [k])
+  (request [])
+  (close []))
+
+; DataChannel
+; Use to send audio, video, events, etc...
+; - provides a generic object communication pipe
+; - support encryption
+; - support nat traversal and routing through a 3rd party
+; -
+; request a named channel with some args
+; on-named-channel request handler
+;
+
+(defprotocol DHTClient
+  (close []) ; leave?
+  (put [obj])
+  (get [obj])
+  (delete [obj]))
+
+; join (part of construction, or part of protocol?)
+; (getSuccessor [id])
+
+(defprotocol RandomWalkClient
+  (find [key])
+  (sample-query [query]))
+
+; peer connection protocol to talk to remote peer
+; id (name?): return the peer-id
+; query: run a query
+; get-node: return a node (or some properties) given a UUID
+; get-peers: return all peers
+
+; group communication
+; join
+; leave
+; send-message
+; on-message-received
+
+
+
+; Example apps
+;
+; * text based chat (or maybe with basic swing gui)
+(defprotocol ChatClient
+  (onMessage [])
+  (sendMessage []))
+
+; * simple work queue system, where jobs can be added to a server and it forwards them to
+; available client workers
+
+
+; Buddy Service
+; * looks up buddies on join, and then periodically pings them to monitor their status
+; * allows for querying and opening channels to friends
+; * store buddy info in local graph (proxy nodes)
+(defprotocol ContactClient
+  (onArrival [])
+  (onDeparture [])
+  (info [])
+  (query [])
+  (channel []))
+
+; Distributed drawing or click command
+; * simple P2P app where the user on one side clicks on the screen and the peers
+; see dots or lines or something
+
+; Given an arbitrary name return back the peer connection info
+(defprotocol NamingService    ; NamingClient?
+  (resolve [name]))
+
+; Local network broadcaster (using UDP)
+; - periodically broadcast a simple presence message with local peer connection info
+; - listener gets called whenever a UDP packet arrives
+;
+
+; Gossip based updates of ??? document, peer list, named groups, service info?
+; - gossip based publication of arbitrary object, or key/value pair?
+
+
+; Super simple jSpeex audio streaming on top of Plasma
+;
+)

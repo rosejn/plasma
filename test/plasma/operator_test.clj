@@ -59,6 +59,7 @@
 (defn result [q]
   (channel-seq (get-in q [:proj :out]) 1000))
 
+
 ; (path [synth [:music :synths :synth]]
 ;   (where (> (:score synth) 0.3)))
 (deftest select-op-test []

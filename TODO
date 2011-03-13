@@ -1,10 +1,23 @@
-* Change name to:
+---------------------
+Supporting experiments:
 
-- d-graph, dgraph, dg
-- net-graph, netgraph
-- p-graph, pgraph
+* insertion
+ - to push nodes onto a peer
 
------------------
+
+* enable logging of typical networking metrics:
+ - bytes
+ - messages
+ - peers
+ - latency
+
+* implement recursive and iterative operators
+* implement query packet TTL counter that decrements at each hop
+ - packets dropped when (zero? TTL)
+* implement latency introducer stage in pipeline so we can simulate larger
+networks
+
+----------------------------------------------------------
 
 == Moving to defrecord style:
 
@@ -14,7 +27,7 @@ methods:
 * plan version
 * instance version
 
-----------------
+----------------------------------------------------------
 
 * subscribe to a (local or remote) node 
  - return a channel to receive update events

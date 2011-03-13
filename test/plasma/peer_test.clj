@@ -133,3 +133,14 @@
         ;(doseq [[p root-id n] peers]
         ;  (peer-close p))
         (clear-peer-pool)))))
+
+(comment deftest peer-event-test []
+  (let [local (local-peer "db/p1")
+        p1 (peer "localhost")]
+    ))
+
+
+
+
+
+

@@ -192,7 +192,7 @@
     (keyword? pred) #(= pred (:label %1))
     (regexp? pred) #(re-find pred %)
     (fn? pred) pred
-    :default 
+    :default
     (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
 
 (defn traverse-op
@@ -407,7 +407,8 @@
    :out out}))
 
 (defn project-op
-	"Project will turn a stream of PTs into a stream of either node UUIDs or node maps containing properties."
+	"Project will turn a stream of PTs into a stream of either node UUIDs or node 
+ maps containing properties."
 	[id left project-key props?]
   (let [left-out (:out left)
         out (map* (fn [pt]
@@ -444,4 +445,10 @@
   (let [choose-fn (fn [arg-seq]
                     (take n (shuffle arg-seq)))]
     (aggregate-op id left choose-fn)))
+
+(comment defn recurse-op
+  "Recursively executes a query, where the output of one iteration is fed as 
+  input to the next."
+  [id left param]
+  (siphon left param))
 

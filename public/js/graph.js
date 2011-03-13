@@ -25,7 +25,7 @@ var plasma = null;
 
     // Return the intersection point of a line and a box
     var intersect_line_box = function(p1, p2, boxTuple) {
-      var p3 = {x:boxTuple[0], y:boxTuple[1]},
+      var p3 = {x: boxTuple[0], y: boxTuple[1]},
           w = boxTuple[2],
           h = boxTuple[3]
 
@@ -72,7 +72,7 @@ var plasma = null;
         var tail = intersect_line_box(pt1, pt2, renderer.node_boxes[edge.source.name])
         var head = intersect_line_box(tail, pt2, renderer.node_boxes[edge.target.name])
         ctx.save();
-        ctx.strokeStyle = "rgba(0,0,0, .333)";
+        ctx.strokeStyle = "rgba(0,0,0,0.666)";
         ctx.lineWidth = 1.0;
         ctx.beginPath();
         ctx.moveTo(tail.x, tail.y);
@@ -80,26 +80,10 @@ var plasma = null;
         ctx.stroke();
         ctx.restore();
 
-        /*
-        // Compute arrow edges
-        var line_angle = Math.atan((pt2.y - pt1.y) / (pt2.x - pt1.x));
-        
-        var a1 = line_angle + 45 * Math.PI / 180;
-        var a2 = line_angle - 45 * Math.PI / 180;
-        var x3 = pt2.x - arrow_length * Math.cos(a1);
-        var y3 = pt2.y - arrow_length * Math.sin(a1);
-        var x4 = pt2.x - arrow_length * Math.cos(a2);
-        var y4 = pt2.y - arrow_length * Math.sin(a2);
-        ctx.moveTo(pt2.x, pt2.y);
-        ctx.lineTo(x3, y3);
-        ctx.lineTo(x4, y4);
-        ctx.lineTo(pt2.x, pt2.y);
-        */
-
         var arrow_length = 10;
         var arrow_width = 4;
         ctx.save();
-        ctx.fillStyle = "#cccccc"; //"rgba(0,0,0, .555)";
+        ctx.fillStyle = "rgba(0,0,0,0.666)";
         ctx.translate(head.x, head.y);
         ctx.rotate(Math.atan2(head.y - tail.y, head.x - tail.x));
         ctx.beginPath();
@@ -111,7 +95,8 @@ var plasma = null;
         ctx.restore();
 
         if(edge.data.label) {
-          var center = head.subtract(tail).divide(2).add(tail);
+          //var center = head.subtract(tail).divide(2).add(tail);
+          var center = pt2.subtract(pt1).divide(2).add(pt1);
           ctx.save();
           ctx.strokeStyle = "rgba(0,0,0, .666)";
           ctx.strokeText(edge.data.label, center.x, center.y); 
@@ -122,39 +107,33 @@ var plasma = null;
       draw_node: function(ctx, node, pt) {
         // determine the box size and round off the coords if we'll be 
         // drawing a text label (awful alignment jitter otherwise...)
-        var label = node.data.label || node.name.substring("5, 9");
-        var width = ctx.measureText(""+label).width + 10
-        var height = 16;
-        if (!(""+label).match(/^[ \t]*$/)) {
-          pt.x = Math.floor(pt.x)
-          pt.y = Math.floor(pt.y)
-          } else {
-            label = null;
-        }
+        var label = "" + (node.data.label || node.name.substring("5, 9"));
+        var width = ctx.measureText(label).width + 12;
+        var height = 18;
+        pt.x = Math.floor(pt.x)
+        pt.y = Math.floor(pt.y)
+        renderer.node_boxes[node.name] = [pt.x-width/2, pt.y-width/2, width, height];
 
-        var color = "black";
+        var fill = "black"; //"rgb(40, 40, 40)";
         if(plasma.graph.renderer.selected_node == node.name) {
-          color = "red";
-        } else if (node.data.color) {
-          color = node.data.color;
-        }
+          fill = "red";
+        } 
 
         // Rectangle centered at point pt
         ctx.save();
-        ctx.fillStyle = color;
+        ctx.fillStyle = fill;
         ctx.fillRect(pt.x-width/2, pt.y-height/2, width, height);
-        renderer.node_boxes[node.name] = 
-          [pt.x-width/2, pt.y-width/2, width, height];
 
-        // draw the text
-        if (label) {
-          ctx.font = "12px Helvetica"
-          ctx.textAlign = "center"
-          ctx.fillStyle = "white"
-          if (node.data.color=='none') ctx.fillStyle = '#333333'
-          ctx.fillText(label||"", pt.x, pt.y+4)
-          ctx.fillText(label||"", pt.x, pt.y+4)
+        ctx.font = "12px Helvetica";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "white";
+        ctx.fillText(label, pt.x, pt.y+4);
+        /*
+        if (node.data.color=='none') {
+          ctx.fillStyle = '#333333';
         }
+        */
+
         ctx.restore();
       },
 
@@ -186,6 +165,11 @@ var plasma = null;
             if (dragged && dragged.node !== null){
               // while we're dragging, don't let physics move the node
               dragged.node.fixed = true
+
+              renderer.selected_node = dragged.node.name;
+              if(node_handler) {
+                node_handler(dragged.node);
+              }
             }
 
             $(canvas).bind('mousemove', handler.dragged)
@@ -210,12 +194,6 @@ var plasma = null;
             if (dragged===null || dragged.node===undefined) return
             if (dragged.node !== null) dragged.node.fixed = false
             dragged.node.tempMass = 1000
-
-            renderer.selected_node = dragged.node.name;
-
-            if(node_handler) {
-              node_handler(dragged.node);
-            }
 
             dragged = null
             $(canvas).unbind('mousemove', handler.dragged)
@@ -368,9 +346,12 @@ var plasma = null;
           //jQuery.each(node.edges, function(prop, val) {
           //  console.log("[expand_node] edge - " + prop + ": " + val);
           //});
-          plasma.add_node(node.id, node);
-          if(handler) {
-            handler(node);
+          if(node) {
+            plasma.add_node(node.id, node);
+
+            if(handler) {
+              handler(node);
+            }
           }
         });
       },
@@ -414,7 +395,9 @@ var plasma = null;
     graph_model.renderer.on_node_clicked( function(node) {
       console.log("clicked: " + node.name);
       plasma.show_object(node);
-      plasma.expand_node(node.name, plasma.show_node);
+      if(is_uuid(node.name)) {
+        plasma.expand_node(node.name, plasma.show_node);
+      }
     });
 
 		return client;

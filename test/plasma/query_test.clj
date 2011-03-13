@@ -53,7 +53,7 @@
 (defn append-send-node
   [plan]
   (let [{:keys [ops root]} plan
-        op (plan-op :send 
+        op (plan-op :send
                     :deps [root])
         ops (assoc ops (:id op) op)  ; add to ops
         plan (assoc plan
@@ -86,6 +86,10 @@
     (run-query opt-tree {})
     (is (= (doall (query-results tree))
            (doall (query-results opt-tree))))))
+
+(comment deftest recurse-test
+  (recurse (path [:net :peer])
+           :count 10))
 
 (use-fixtures :once test-fixture)
 

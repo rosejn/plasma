@@ -66,7 +66,7 @@
     (cond
       ; path starting with a keyword means start at the root
       (keyword? start)
-      (let [root-op (plan-op :parameter 
+      (let [root-op (plan-op :parameter
                              :args [ROOT-ID])]
         [root-op (:id root-op)])
 
@@ -80,7 +80,7 @@
 
       ; starting with the UUID of a node starts at that node"
       (node-exists? :graph start)
-      (let [root-op (plan-op :parameter 
+      (let [root-op (plan-op :parameter
                              :args [start])]
         [root-op (:id root-op)]))))
 
@@ -94,10 +94,10 @@
            ops {root-id root-op}]
       (log/to :query "root: " root-id " src: " src-id " path: " path)
       (if path
-        (let [trav (plan-op :traverse 
+        (let [trav (plan-op :traverse
                             :args [src-id (first path)])
               t-id (:id trav)
-              join (plan-op :join 
+              join (plan-op :join
                             :deps [root-id t-id])
               j-id (:id join)]
           (recur j-id t-id (next path)
@@ -154,10 +154,10 @@
       (fn [plan [binding pred]]
         (log/to :query "pred: " pred)
         (let [select-key (get-in plan [:pbind binding])
-              p-op (plan-op :property 
+              p-op (plan-op :property
                             :deps [(:root plan)]
                             :args [select-key [(:property pred)]])
-              s-op (plan-op :select 
+              s-op (plan-op :select
                             :deps [(:id p-op)]
                             :args [select-key pred])
               ops (assoc (:ops plan)
@@ -173,7 +173,7 @@
   [plan bind-sym properties]
   (let [bind-op (get (:pbind plan) bind-sym)
         root-op (:root plan)
-        prop-op (plan-op :property 
+        prop-op (plan-op :property
                          :deps [root-op]
                          :args [bind-op properties])]
     (assoc plan
@@ -201,7 +201,7 @@
                plan)
         bind-op (get (:pbind plan) bind-sym)
         root-op (:root plan)
-        proj-op (plan-op :project 
+        proj-op (plan-op :project
                          :deps [root-op]
                          :args [bind-op props?])]
     (assoc plan
@@ -222,7 +222,7 @@
 
 (defn- plan-receiver
   [plan]
-  (let [op (plan-op :receive 
+  (let [op (plan-op :receive
                     :deps [(:root plan)])
         ops (assoc (:ops plan) (:id op) op)]
     (assoc plan
@@ -281,10 +281,10 @@
   (let [order (or order :asc)
         {:keys [root ops]} plan
         sort-key (get (:pbind plan) sort-var)
-        p-op (plan-op :property 
+        p-op (plan-op :property
                       :deps [(:root plan)]
                       :args [sort-key [sort-prop]])
-        s-op (plan-op :sort 
+        s-op (plan-op :sort
                       :deps [(:id p-op)]
                       :args [sort-key sort-prop order])
         ops (assoc ops
@@ -403,11 +403,11 @@
 
       :property
       (apply op-fn id (first deps-ops) args)
-    )))
+      )))
 
 (defn- op-dep-list
-  "Returns a sorted operator dependency list. (Starting at the leaves of the tree 
-  where the operators have no dependencies and iterating in towards the root.)" 
+  "Returns a sorted operator dependency list. (Starting at the leaves of the tree
+  where the operators have no dependencies and iterating in towards the root.)"
   [plan]
   (let [ops (vals (:ops plan))
         leaves (filter #(empty? (:deps %)) ops)]
@@ -417,22 +417,21 @@
         sorted
         (let [sort-set (set (map :id sorted))
               next-level (filter #(set/subset? (set (:deps %))
-                                               sort-set) 
+                                               sort-set)
                                  others)
               sorted (concat sorted next-level)]
           (recur
             sorted
             (set/difference others (set sorted))))))))
-    
+
 (defn- build-query
   "Iterate over the query operators, instantiating each one after its dependency
   operators have been instantiated."
   [plan]
   (let [recv-chan (channel)
         sorted (op-dep-list plan)]
-;    (log/to :build "\n" (with-out-str (print-query plan)))
     (log/to :build "[build-query] sorted: " (seq sorted))
-    (reduce 
+    (reduce
       (fn [ops op]
         (assoc ops (:id op)
                (op-node plan ops recv-chan op)))
@@ -455,7 +454,7 @@
     false))
 
 (defn with-result-project
-  "If an explicity projection has not been added to the query plan
+  "If an explicit projection has not been added to the query plan
   then by default we project on the final element of the path query."
   [plan]
   (if (has-projection? plan)
@@ -480,20 +479,34 @@
 
 (defn query-results
   [tree & [timeout]]
-  (let [timeout (or timeout 1000)]
-    (channel-seq (get-in (:ops tree) [(:root tree) :out]) timeout)))
+  (let [chan (get-in (:ops tree) [(:root tree) :out])
+        timeout (or timeout 1000)]
+    (channel-seq chan timeout)))
 
-(defn query
+(defn query-result-seq
+  [chan & [timeout]]
+  (let [timeout (or timeout 1000)]
+    (channel-seq chan timeout)))
+
+(defn query-channel
+  "Issue a query to the currently bound graph, and return a channel
+  representing the results."
   [plan & [param-map]]
   (assert (query? plan))
   (let [plan (with-result-project plan)
-;        _ (print-query plan)
         plan (optimize-plan plan)
-;        _ (print-query plan)
         tree (query-tree plan)
-        param-map (or param-map {})]
+        param-map (or param-map {})
+        res-chan (get-in (:ops tree) [(:root tree) :out])]
     (run-query tree param-map)
-    (doall (query-results tree))))
+    res-chan))
+
+(defn query
+  "Issue a query to the currently bound graph."
+  ([plan]
+   (doall (query-result-seq (query-channel plan))))
+  ([plan param-map]
+   (doall (query-result-seq (query-channel plan param-map)))))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."
@@ -523,5 +536,41 @@
         tree (query-tree plan)]
     (run-query tree {})))
 
+(def DEFAULT-TTL 50)
+
+(defn- peer-iter
+  [])
+
+(defn- iter*
+  [plan src-id]
+  (let [results (query plan)]
+    (unless (every? uuid? results)
+      (throw (Exception. (str "Iterative queries must result in a set of node 
+UUIDs, but instead got: \n" results))))
+    (doseq [n-id results]
+      (if (proxy-node? n-id)
+        (peer-iter plan n-id)
+        (iter* plan n-id)))))
+
+(defn iter
+  "Execute a query recursively, where the output of one iteration is
+  used as the input to the next for count iterations."
+  [plan count]
+  (let [plan (assoc plan 
+                    :type :iter-query
+                    :iter-count count
+                    :ttl DEFAULT-TTL)
+        src-id (root-node)]
+    (iter* plan src-id)))
+
+; find-node: by uuid
+; find-edge: by uuid
+; link-node: take path or uuid as src, edge-label, and new node map, return
+; the new node's UUID
+; remove-node: 
+; assoc-node: 
+; assoc-edge:
+;
+;
 ; TODO: Add a simple query type (and maybe operator) to return a single node by UUID
 
