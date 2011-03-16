@@ -1,5 +1,6 @@
 (ns plasma.peer-test
-  (:use [plasma core peer query] :reload-all
+  (:use :reload-all
+        [plasma config util core peer query]
         [lamina core]
         [jiraph graph]
         test-utils
@@ -11,13 +12,16 @@
 ;(log/console :peer)
 
 (deftest peer-pool-test []
+  (dosync (alter config* assoc
+                 :peer-port (+ 10000 (rand-int 20000))
+                 :presence-port (+ 10000 (rand-int 20000))))
   (try
     (dotimes [i 1000]
       (refresh-peer {:host "test.com"
                      :port i
                      :connection (channel)}) ;(fn [_] nil)})
       (is (<= (count @peer-pool*)
-              MAX-POOL-SIZE)))
+              (config :connection-pool-size))))
     (finally
       (clear-peer-pool))))
 
@@ -28,11 +32,14 @@
     (test-graph)))
 
 (deftest peer-send-test []
+  (dosync (alter config* assoc
+                 :peer-port (+ 10000 (rand-int 20000))
+                 :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
         local (local-peer "db/p1" port)]
     (try
       (reset-peer local)
-      (let [p (peer "localhost" port)]
+      (let [p (peer-connection "localhost" port)]
         (is (= :pong (peer-query p :ping 1000)))
         (is (uuid?   (peer-query p ROOT-ID 1000)))
         (let [q (path [synth [:music :synths :synth]]
@@ -47,11 +54,14 @@
         (clear-peer-pool)))))
 
 (deftest proxy-node-test []
+  (dosync (alter config* assoc
+                 :peer-port (+ 10000 (rand-int 20000))
+                 :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
         local (local-peer "db/p1" port)
         remote (local-peer "db/p2" (inc port))
-        local-p (peer "localhost" port)
-        remote-p (peer "localhost" (inc port))]
+        local-p (peer-connection "localhost" port)
+        remote-p (peer-connection "localhost" (inc port))]
     (try
       (reset-peer local)
       (reset-peer remote)
@@ -74,10 +84,13 @@
         (clear-peer-pool)))))
 
 (deftest many-proxy-node-test []
+  (dosync (alter config* assoc
+                 :peer-port (+ 10000 (rand-int 20000))
+                 :presence-port (+ 10000 (rand-int 20000))))
   (let [n-peers 10
         port (+ 1000 (rand-int 10000))
         local (local-peer "db/local" port)
-        local-p (peer "localhost" port)
+        local-p (peer-connection "localhost" port)
         peers (doall
                 (map
                   (fn [n]

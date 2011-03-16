@@ -539,29 +539,43 @@
 (def DEFAULT-TTL 50)
 
 (defn- peer-iter
-  [])
+  "Send an iterative query to a peer using the given proxy node both to
+  get the URL of the peer and also as the query start node."
+  [plan root-proxy])
 
+(defn- peer-result-chan
+  "Returns a channel used to send results to a peer."
+  [url query-id])
+
+; TODO: This can probably be turned into an iter-op operator...?
 (defn- iter*
   [plan src-id]
-  (let [results (query plan)]
-    (unless (every? uuid? results)
-      (throw (Exception. (str "Iterative queries must result in a set of node 
-UUIDs, but instead got: \n" results))))
-    (doseq [n-id results]
-      (if (proxy-node? n-id)
-        (peer-iter plan n-id)
-        (iter* plan n-id)))))
+  (let [iter-count (:iter-count plan)
+        plan (assoc plan 
+                    :iter-count (dec iter-count))
+        res-chan (query-channel plan)]
+    (if (zero? iter-count)
+      (let [src-url (:src-url plan)
+            query-id (:id plan)
+            ch (peer-result-chan src-url query-id)]
+        (siphon res-chan ch))
+      (receive-all res-chan
+        (fn [v]
+          (if (proxy-node? v)
+            (peer-iter plan v)
+            (iter* plan v)))))))
 
 (defn iter
   "Execute a query recursively, where the output of one iteration is
   used as the input to the next for count iterations."
-  [plan count]
-  (let [plan (assoc plan 
-                    :type :iter-query
-                    :iter-count count
-                    :ttl DEFAULT-TTL)
-        src-id (root-node)]
-    (iter* plan src-id)))
+  ([plan count]
+   (iter plan count {}))
+  ([plan count params]
+   (let [plan (assoc plan 
+                     :type :iter-query
+                     :iter-count count
+                     :ttl DEFAULT-TTL)]
+     (iter* plan params))))
 
 ; find-node: by uuid
 ; find-edge: by uuid

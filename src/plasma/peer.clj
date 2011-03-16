@@ -1,24 +1,14 @@
 (ns plasma.peer
   (:use [lamina core connections]
         [aleph object]
-        [plasma util core query]
+        [plasma config util presence core query]
         jiraph.graph)
   (:require [logjam.core :as log]))
 
 (log/channel :peer :debug)
 ;(log/console :peer)
 
-(def DEFAULT-PORT 4242)
-
-(def MAX-POOL-SIZE 50)
-(def IDEAL-POOL-SIZE 40)
-
 (defonce peer-pool* (atom {}))
-
-(def DELIMITER "\0")
-
-(defn current-time []
-  (System/currentTimeMillis))
 
 (defn- close-peer-con
   [con]
@@ -28,7 +18,7 @@
 (defn- flush-peer-pool
   []
   {:post [(every? #(contains? % :connection) (vals @peer-pool*))]}
-  (let [to-drop (- (count @peer-pool*) IDEAL-POOL-SIZE)
+  (let [to-drop (- (count @peer-pool*) (* (config :connection-pool-size) 0.8))
         sorted  (sort-by :last-used (vals @peer-pool*))
         dropped (take to-drop sorted)
         conns (drop to-drop sorted)]
@@ -47,7 +37,7 @@
 (defn refresh-peer [peer]
   (let [new-peer (assoc peer :last-used (current-time))]
     (swap! peer-pool* #(assoc % [(:host peer) (:port peer)] new-peer))
-    (if (> (count @peer-pool*) MAX-POOL-SIZE)
+    (if (> (count @peer-pool*) (config :connection-pool-size))
       (flush-peer-pool))
     new-peer))
 
@@ -64,11 +54,11 @@
       :port port
       :connection con})))
 
-(defn peer
+(defn peer-connection
   "Returns a peer for the given host and port.
   Uses a cached connection when available."
   ([host]
-   (peer host DEFAULT-PORT))
+   (peer-connection host (config :peer-port)))
   ([host port]
    (let [con (if-let [c (get @peer-pool* [host port])]
                (refresh-peer c)
@@ -77,6 +67,8 @@
 
 (defn peer-dispatch [peer ch client-info]
   (log/to :peer "[peer-dispatch] new client: " client-info)
+  
+  ; TODO: instead enqueue a peer-connection
   (enqueue (:on-connect peer) {:client-info client-info
                                :chan ch})
   (receive-all ch
@@ -121,17 +113,24 @@
               (log/to :peer "req from " client-info ": " req)
               (log/to :peer "caused exception: " e (.printStackTrace e)))))))))
 
+(defn- register-peer-connection 
+  [host port])
+
 (defn- peer-server
   "Listen on port, responding to queries against the peer graph."
   [peer]
   (log/to :peer "[peer-server] starting on port: " (:port peer))
   (let [s (start-object-server
             (partial peer-dispatch peer)
-            {:port (:port peer)})]
-    (reset! (:server peer) s)))
+            {:port (:port peer)})
+        presence-chan (presence-listener)]
+    (reset! (:server peer) s)
+    (receive-all presence-chan
+      (fn [{:keys [peer-id peer-port peer-host]}]
+        (register-peer-connection peer-host peer-port)))))
 
 ; TODO: handle (re-)connection errors here...?
-(defn- peer-connection
+(defn- get-peer-connection
   [peer]
   (if (= :local-peer (:type peer))
     (throw (Exception. "Cannot open a connection to a local peer.")))
@@ -149,7 +148,7 @@
   [peer q & [timeout]]
   (log/to :peer "[peer-query] peer: " peer)
   (let [req {:type :request :id (uuid) :body q}
-        chan (peer-connection peer)
+        chan (get-peer-connection peer)
         result (constant-channel)
         res-filter (take* 1
                           (map* :body
@@ -165,14 +164,14 @@
   [peer q]
   (log/to :peer "[peer-query] peer: " peer)
   (let [req {:type :request :id (uuid) :body q}
-        chan   (peer-connection peer)]
+        chan   (get-peer-connection peer)]
     (enqueue chan req)
     chan))
 
 (defmethod peer-sender "plasma"
   [url]
   (let [{:keys [host port]} (url-map url)]
-    (partial peer-sub-query (peer host port))))
+    (partial peer-sub-query (peer-connection host port))))
 
 (defn- init-peer-graph
   []
@@ -186,10 +185,11 @@
   "Create a new peer using a graph database located at path, optionally
   specifying the port number to listen on."
   [path & [port]]
-  (let [port (if port port DEFAULT-PORT)
+  (let [port (if port port (config :peer-port))
         g (graph path)
         p {:type :local-peer
            :server (atom nil)
+           :new-peers (atom nil)
            :port port
            :graph g
            :on-connect (channel)
@@ -198,12 +198,7 @@
     p))
 
 (defn on-peer-connect
-  "Returns an event channel of incoming connection events.
-  The event is a map containing a channel to the remote peer
-  and the client information for the remote peer.
-    {:chan ch
-     :client-info client-info}
-  "
+  "Returns an event channel of new peer connections."
   [p]
   (fork (:on-connect p)))
 
@@ -252,9 +247,20 @@
 ; :peer-id
 
 (defprotocol PeerConnection
+  (name [])
   (setKey [k])
   (request [])
+  (notify [])
+  (request-channel [])
+  (notify-channel [])
+  (disconnect-channel [])
+  (error-channel [])
   (close []))
+
+(defprotocol Queryable
+  (query [])
+  (sub-query [])
+  (iter []))
 
 ; DataChannel
 ; Use to send audio, video, events, etc...

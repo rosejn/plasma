@@ -1,16 +1,13 @@
 (ns plasma.core
   (:use
-    [plasma util]
+    [plasma util config]
     [lamina core]
     [aleph tcp formats]
     [jiraph graph]))
 
-(def META-ID "UUID:META")
-
 ; Special uuid used to query for a graph's root node.
 (def ROOT-ID "UUID:ROOT")
 
-(def DB-PATH "db")
 (def *current-query* nil)
 (def *current-binding* nil)
 (def *current-path* nil)
@@ -30,14 +27,6 @@
 
 (defn clear-graph []
   (truncate!))
-
-(defn uuid
-  "Creates a random, immutable UUID object that is comparable using the '=' function."
-  [] (str "UUID:" (. java.util.UUID randomUUID)))
-
-(defn uuid? [s]
-  (and (string? s)
-       (= (seq "UUID:") (take 5 (seq s)))))
 
 (defn node
   "Create a node in the current graph that contains the given key-value pairs. If a UUID string is passed as the first argument then it will be used for the new node, otherwise a new one will be generated."
@@ -76,7 +65,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
 (defn- init-new-graph
   []
   (let [root (node :label :root)
-        meta (node META-ID :root root)]
+        meta (node (config :meta-id) :root root)]
     {:root root}))
 
 (defn graph
@@ -84,7 +73,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
   [path]
   (let [g {:graph (layer path)}]
     (with-graph g
-      (let [meta (find-node META-ID)
+      (let [meta (find-node (config :meta-id))
             meta (if meta
                    meta
                    (init-new-graph))]
