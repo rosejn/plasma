@@ -114,7 +114,7 @@ var plasma = null;
         pt.y = Math.floor(pt.y)
         renderer.node_boxes[node.name] = [pt.x-width/2, pt.y-width/2, width, height];
 
-        var fill = "black"; //"rgb(40, 40, 40)";
+        var fill = "rgb(40, 40, 40)";
         if(plasma.graph.renderer.selected_node == node.name) {
           fill = "red";
         } 
@@ -342,6 +342,7 @@ var plasma = null;
       },
 
       expand_node: function(id, handler) {
+        console.log("expanding node: " + id);
         this.find_node(id, function(node) {
           //jQuery.each(node.edges, function(prop, val) {
           //  console.log("[expand_node] edge - " + prop + ": " + val);

@@ -1,5 +1,5 @@
 (ns plasma.viz
-  (:use [plasma core operator]
+  (:use [plasma util core operator]
         jiraph.graph)
   (:require [logjam.core :as log]
             [vijual :as vij]
@@ -19,7 +19,7 @@
 (defn- tree-vecs [q]
   [(tree-vecs* q (:root q))])
 
-(defn print-query 
+(defn print-query
   "Print the query operator tree for a query plan."
   [plan]
   (vij/draw-tree (tree-vecs plan)))
@@ -60,7 +60,7 @@
 
 (defn- dot-op
   [{:keys [id type args]}]
-  (let [label (case type 
+  (let [label (case type
                 :traverse (str "traverse: [" (second args) "]")
                 :parameter (str "param: " (if (uuid? (first args))
                                             (apply str (drop 5 (first args)))

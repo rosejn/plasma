@@ -1,5 +1,5 @@
 (ns plasma.query-test
-  (:use [plasma core operator query viz]
+  (:use [plasma util core operator query viz]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core

@@ -1,5 +1,5 @@
 (ns plasma.operator-test
-  (:use [plasma core operator]
+  (:use [plasma util core operator]
         [clojure test stacktrace]
         [lamina core]
         [jiraph graph]

@@ -122,12 +122,8 @@
   (log/to :peer "[peer-server] starting on port: " (:port peer))
   (let [s (start-object-server
             (partial peer-dispatch peer)
-            {:port (:port peer)})
-        presence-chan (presence-listener)]
-    (reset! (:server peer) s)
-    (receive-all presence-chan
-      (fn [{:keys [peer-id peer-port peer-host]}]
-        (register-peer-connection peer-host peer-port)))))
+            {:port (:port peer)})]
+    (reset! (:server peer) s)))
 
 ; TODO: handle (re-)connection errors here...?
 (defn- get-peer-connection
@@ -184,18 +180,23 @@
 (defn local-peer
   "Create a new peer using a graph database located at path, optionally
   specifying the port number to listen on."
-  [path & [port]]
-  (let [port (if port port (config :peer-port))
-        g (graph path)
-        p {:type :local-peer
-           :server (atom nil)
-           :new-peers (atom nil)
-           :port port
-           :graph g
-           :on-connect (channel)
-           :on-query (channel)}]
-    (peer-server p)
-    p))
+  ([path] (local-peer path {}))
+  ([path options]
+   (let [port (get options :port (config :peer-port))
+         g (graph path)
+         p {:type :local-peer
+            :server (atom nil)
+            :new-peers (atom nil)
+            :port port
+            :graph g
+            :on-connect (channel)
+            :on-query (channel)}]
+     (peer-server p)
+     (when (:presence options)
+       (receive-all (presence-listener)
+                    (fn [{:keys [peer-id peer-port peer-host]}]
+                      (register-peer-connection peer-host peer-port))))
+     p)))
 
 (defn on-peer-connect
   "Returns an event channel of new peer connections."

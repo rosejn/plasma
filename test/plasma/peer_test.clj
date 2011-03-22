@@ -36,7 +36,7 @@
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
-        local (local-peer "db/p1" port)]
+        local (local-peer "db/p1" {:port port})]
     (try
       (reset-peer local)
       (let [p (peer-connection "localhost" port)]
@@ -58,8 +58,8 @@
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
-        local (local-peer "db/p1" port)
-        remote (local-peer "db/p2" (inc port))
+        local (local-peer "db/p1" {:port port})
+        remote (local-peer "db/p2" {:port (inc port)})
         local-p (peer-connection "localhost" port)
         remote-p (peer-connection "localhost" (inc port))]
     (try
@@ -89,12 +89,12 @@
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [n-peers 10
         port (+ 1000 (rand-int 10000))
-        local (local-peer "db/local" port)
+        local (local-peer "db/local" {:port port})
         local-p (peer-connection "localhost" port)
         peers (doall
                 (map
                   (fn [n]
-                    (let [p (local-peer (str "db/peer-" n) (+ port n 1))]
+                    (let [p (local-peer (str "db/peer-" n) {:port (+ port n 1)})]
                       (with-graph (:graph p)
                         (clear-graph)
                         (let [root-id (root-node)]
