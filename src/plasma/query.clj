@@ -536,7 +536,7 @@
         tree (query-tree plan)]
     (run-query tree {})))
 
-(def DEFAULT-TTL 50)
+(def DEFAULT-HTL 50)
 
 (defn- peer-iter
   "Send an iterative query to a peer using the given proxy node both to
@@ -545,13 +545,16 @@
 
 (defn- peer-result-chan
   "Returns a channel used to send results to a peer."
-  [url query-id])
+  [url query-id]
+  (let [{:keys [host port]} (url-map url)]
+    ))
+    ;(peer-connection host port)))
 
 ; TODO: This can probably be turned into an iter-op operator...?
 (defn- iter*
   [plan src-id]
   (let [iter-count (:iter-count plan)
-        plan (assoc plan 
+        plan (assoc plan
                     :iter-count (dec iter-count))
         res-chan (query-channel plan)]
     (if (zero? iter-count)
@@ -571,18 +574,18 @@
   ([plan count]
    (iter plan count {}))
   ([plan count params]
-   (let [plan (assoc plan 
+   (let [plan (assoc plan
                      :type :iter-query
                      :iter-count count
-                     :ttl DEFAULT-TTL)]
+                     :htl DEFAULT-HTL)]
      (iter* plan params))))
 
 ; find-node: by uuid
 ; find-edge: by uuid
 ; link-node: take path or uuid as src, edge-label, and new node map, return
 ; the new node's UUID
-; remove-node: 
-; assoc-node: 
+; remove-node:
+; assoc-node:
 ; assoc-edge:
 ;
 ;

@@ -67,7 +67,7 @@
 
 (defn peer-dispatch [peer ch client-info]
   (log/to :peer "[peer-dispatch] new client: " client-info)
-  
+
   ; TODO: instead enqueue a peer-connection
   (enqueue (:on-connect peer) {:client-info client-info
                                :chan ch})
@@ -113,7 +113,7 @@
               (log/to :peer "req from " client-info ": " req)
               (log/to :peer "caused exception: " e (.printStackTrace e)))))))))
 
-(defn- register-peer-connection 
+(defn- register-peer-connection
   [host port])
 
 (defn- peer-server
@@ -125,18 +125,11 @@
             {:port (:port peer)})]
     (reset! (:server peer) s)))
 
-; TODO: handle (re-)connection errors here...?
 (defn- get-peer-connection
   [peer]
   (if (= :local-peer (:type peer))
     (throw (Exception. "Cannot open a connection to a local peer.")))
   (wait-for-result (:connection peer) 2000))
-
-;  (let [con ((:connection peer))
-;        _ (log/to :peer "[peer-connection] con: " con)
-;        res (wait-for-result con)]
-;        (log/to :peer "[peer-connection] res:" res)
-;    res))
 
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
