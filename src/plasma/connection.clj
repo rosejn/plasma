@@ -20,27 +20,29 @@
     "Send a request over this connection. Returns a constant channel 
     that will receive the single result message.")
 
-  (notify        
-    [con method params] 
-    "Send a notification over this connection.")
-  
-  (stream-channel
-    [con method params]
-    "Open a stream channel on this connection.  Returns a channel that can be used bi-directionally.")
-
   (request-channel
     [con] 
     "Returns a channel for incoming requests.  The channel will receive 
     [ch request] pairs, and the rpc-response or rpc-error enqueued on 
     ch will be sent as the response.")
 
+  (notify        
+    [con method params] 
+    "Send a notification over this connection.")
+  
   (notification-channel 
     [con] 
     "Returns a channel for incoming notifications.")
-  
-  (error-channel
-    [con] 
-    "Returns a channel for errors (disconnect, etc.)"))
+
+  (stream
+    [con method params]
+    "Open a stream channel on this connection.  Returns a channel that can be used bi-directionally.")
+
+  (stream-channel
+    [con]
+    "Returns a channel for incoming stream requests.  The channel will receive
+    [ch request] pairs, and the ch can be used as a named bi-direction stream.")
+  )
 
 (defn- type-channel
   "Returns a channel of incoming messages on chan of only the given type."
@@ -60,6 +62,22 @@
     (lamina/siphon res res-chan)
     res-chan))
 
+(defn- wrapped-stream-channel
+  [chan id]
+  (let [s-in-chan (lamina/map* #(:msg %)
+                               (lamina/filter* #(= id (:id %)) 
+                                  (type-channel chan :stream)))
+        wrap-chan (lamina/channel)
+        [snd-chan rcv-chan] (lamina/channel-pair)]
+    (lamina/siphon s-in-chan rcv-chan)
+    (lamina/siphon (lamina/map* (fn [msg]
+                    {:type :stream
+                     :id id
+                     :msg msg})
+                  rcv-chan)
+            chan)
+    snd-chan))
+
 (defrecord PeerConnection
   [url chan]
   IConnection
@@ -68,30 +86,39 @@
     [this method params]
     (let [id (uuid)
           res (response-channel chan id)]
-      (log/to :con "request id: " id)
       (lamina/enqueue chan (rpc-request id method params))
       res))
+
+  (request-channel
+    [this]
+    (lamina/map* (fn [request] [chan request])
+                 (type-channel chan :request)))
 
   (notify 
     [this method params]
     (lamina/enqueue chan (rpc-notify method params)))
 
-  (request-channel
-    [this]
-    (log/to :con "request-channel...")
-    (lamina/map* (fn [request] [chan request])
-                 (type-channel chan :request)))
-
   (notification-channel
     [this] 
     (type-channel chan :notification))
 
-  (error-channel
-    [this] 
-    nil)
+  (stream
+    [this method params]
+    (let [id (uuid)
+          req {:type :stream-request
+               :id id
+               :method method
+               :params params}]
+      (lamina/enqueue chan req)
+      (wrapped-stream-channel chan id)))
+
+  (stream-channel
+    [this]
+    (lamina/map* (fn [s-req]
+                   [(wrapped-stream-channel chan (:id s-req)) s-req])
+                 (type-channel chan :stream-request)))
 
   IClosable
-
   (close
     [this] 
     (lamina/close chan)))
@@ -102,7 +129,8 @@
    (let [{:keys [proto host port]} (url-map url)
          client (object-client {:host host :port port})
          chan   (lamina/wait-for-result client *connection-timeout*)]
-     (lamina/receive-all (type-channel chan :response) #(log/to :con "client msg: " %))
+     ;(lamina/receive-all (type-channel chan :response) 
+     ;                    #(log/to :con "client msg: " %))
      (PeerConnection. url chan)))
   ([ch {:keys [remote-addr]}]
    (PeerConnection. (str "plasma://" remote-addr) ch)))

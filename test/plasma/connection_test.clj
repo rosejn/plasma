@@ -11,18 +11,18 @@
   [url]
   IConnection
   (request [c m p])
-  (notify [c m p])
-  (stream-channel [c m p])
   (request-channel [_])
+  (notify [c m p])
   (notification-channel [_])
-  (error-channel [_])
+  (stream [c m p])
+  (stream-channel [c])
 
   IClosable
   (close [_]))
 
 (deftest connection-cache-test
   (try
-    (dotimes [i 4242]
+    (dotimes [i 300]
       (refresh-connection (MockConnection. 
                             (str "tcp://plasma.org:" i)))
       (is (<= (count @connection-cache*)
@@ -40,17 +40,70 @@
           (fn [chan]
             (lamina/receive-all chan
               (fn [[ch req]]
-                (log/to :con "got: " req)
-                (let [val (inc (first (:params req)))
+                (let [val (* 2 (first (:params req)))
                       res (rpc-response req val)]
-                  (log/to :con "sending: " res)
                   (lamina/enqueue ch res))))))
 
-        (let [client (connection "plasma://localhost:1234")
-              res-chan (request client 'foo [10])
-              res-msg (lamina/wait-for-message res-chan 1000)]
-          (is (= 11 (:result res-msg)))
+        (let [client (connection "plasma://localhost:1234")]
+          (dotimes [i 20]
+            (let [res-chan (request client 'foo [i])
+                  res (lamina/wait-for-message res-chan 100)]
+              (is (= (* 2 i) (:result res)))))
           (close client)))
       (finally
         (close listener)
         (clear-connection-cache)))))
+
+(deftest connection-notification-test 
+  (let [listener (connection-listener 1234)]
+    (try
+      (let [events (atom [])
+            con-chan (connection-channel listener)
+            notify-chans (lamina/map* notification-channel 
+                       (lamina/filter* #(not (nil? %)) con-chan))]
+        (lamina/receive-all notify-chans
+          (fn [chan]
+            (lamina/receive-all chan
+              (fn [event]
+                (swap! events conj event)))))
+
+        (let [client (connection "plasma://localhost:1234")]
+          (dotimes [i 20]
+            (notify client 'foo [:a :b :c]))
+          (close client))
+        (Thread/sleep 100)
+        (is (= 20 (count @events))))
+      (finally
+        (close listener)
+        (clear-connection-cache)))))
+
+(deftest connection-stream-test
+  (let [listener (connection-listener 1234)]
+    (try
+      (let [con-chan (connection-channel listener)
+            stream-chans (lamina/map* stream-channel 
+                                      (lamina/filter* #(not (nil? %)) con-chan))]
+        (lamina/receive-all stream-chans
+          (fn [chan]
+            (lamina/receive-all chan
+              (fn [[s-chan msg]]
+                (lamina/enqueue s-chan (inc (first (:params msg))))
+                (lamina/receive-all s-chan 
+                  (fn [v]
+                    (lamina/enqueue s-chan (inc v))))))))
+
+        (let [client (connection "plasma://localhost:1234")
+              s-chan (stream client 'foo [1])
+              res (atom nil)]
+          (lamina/receive s-chan #(lamina/enqueue s-chan (inc %)))
+          (Thread/sleep 100)
+          (lamina/receive s-chan #(lamina/enqueue s-chan (inc %)))
+          (Thread/sleep 100)
+          (lamina/receive s-chan #(reset! res %))
+          (Thread/sleep 100)
+          (is (= 6 @res))
+          (close client)))
+      (finally
+        (close listener)
+        (clear-connection-cache)))))
+
