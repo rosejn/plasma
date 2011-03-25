@@ -11,20 +11,6 @@
 ;(log/file :peer "peer.log")
 ;(log/console :peer)
 
-(deftest peer-pool-test []
-  (dosync (alter config* assoc
-                 :peer-port (+ 10000 (rand-int 20000))
-                 :presence-port (+ 10000 (rand-int 20000))))
-  (try
-    (dotimes [i 1000]
-      (refresh-peer {:host "test.com"
-                     :port i
-                     :connection (channel)}) ;(fn [_] nil)})
-      (is (<= (count @peer-pool*)
-              (config :connection-pool-size))))
-    (finally
-      (clear-peer-pool))))
-
 (defn- reset-peer
   [p]
   (with-graph (:graph p)
@@ -151,9 +137,4 @@
   (let [local (local-peer "db/p1")
         p1 (peer "localhost")]
     ))
-
-
-
-
-
 

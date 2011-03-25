@@ -14,13 +14,6 @@
 (def *current-edge-preds* nil)
 (def *proxy-results* nil)
 
-(defn url-map [url]
-  (let [match (re-find #"(.*)://([a-zA-Z-_.]*):([0-9]*)" url)
-        [_ proto host port] match]
-    {:proto proto
-     :host host
-     :port (Integer. port)}))
-
 (defmulti peer-sender
   (fn [url]
     (:proto (url-map url))))

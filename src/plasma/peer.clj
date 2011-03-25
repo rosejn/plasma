@@ -1,119 +1,61 @@
 (ns plasma.peer
-  (:use [lamina core connections]
+  (:use [lamina core]
         [aleph object]
-        [plasma config util presence core query]
+        [plasma config util core query]
         jiraph.graph)
   (:require [logjam.core :as log]))
 
 (log/channel :peer :debug)
 ;(log/console :peer)
 
-(defonce peer-pool* (atom {}))
+; peer config options
+; :port
+; :max-peers
+; :peer-id
 
-(defn- close-peer-con
-  [con]
-  (close con))
-;  (close-connection con))
+(defn peer-dispatch [peer ch req]
+  (when req
+    (log/to :peer "[peer-dispatch] req-id: " (:id req))
+    (let [id (:id req)
+          msg (:body req)]
+      (try
+        (let [graph (:graph peer)
+              response
+              (cond
+                (= ROOT-ID msg)
+                (with-graph graph (root-node))
 
-(defn- flush-peer-pool
-  []
-  {:post [(every? #(contains? % :connection) (vals @peer-pool*))]}
-  (let [to-drop (- (count @peer-pool*) (* (config :connection-pool-size) 0.8))
-        sorted  (sort-by :last-used (vals @peer-pool*))
-        dropped (take to-drop sorted)
-        conns (drop to-drop sorted)]
-    (reset! peer-pool*
-            (reduce #(assoc %1 [(:host %2) (:port %2)] %2) {} conns))
-  (doseq [con (map :connection dropped)]
-;    (log/to :peer "[clear-peer-pool] con: " con)
-    (close-peer-con con))))
+                (uuid? msg)
+                (with-graph graph (find-node msg))
 
-(defn clear-peer-pool []
-  (doseq [con (map :connection (vals @peer-pool*))]
-;    (log/to :peer "[clear-peer-pool] con: " con)
-    (close-peer-con con))
-  (reset! peer-pool* {}))
+                (= :ping msg)
+                :pong
 
-(defn refresh-peer [peer]
-  (let [new-peer (assoc peer :last-used (current-time))]
-    (swap! peer-pool* #(assoc % [(:host peer) (:port peer)] new-peer))
-    (if (> (count @peer-pool*) (config :connection-pool-size))
-      (flush-peer-pool))
-    new-peer))
+                (= :query (:type msg))
+                (do
+                  (log/to :peer "[peer-handler] query")
+                  (enqueue (:on-query peer) {:chan ch
+                                             :query msg
+                                             :client-info client-info})
+                  (with-graph graph (query msg)))
 
-(defn- peer-cache
-  "Add a peer to the peer cache, creating it if necessary."
-  ([peer]
-   (refresh-peer peer))
-  ([host port]
-   (let [con (object-client {:host host :port port})
-;         con (persistent-connection #(object-client {:host host :port port}))
-         ]
-     {:type :peer
-      :host host
-      :port port
-      :connection con})))
+                (= :sub-query (:type msg))
+                (do
+                  (log/to :peer "[peer-handler] sub-query")
+                  (with-graph graph (sub-query ch msg))))]
 
-(defn peer-connection
-  "Returns a peer for the given host and port.
-  Uses a cached connection when available."
-  ([host]
-   (peer-connection host (config :peer-port)))
-  ([host port]
-   (let [con (if-let [c (get @peer-pool* [host port])]
-               (refresh-peer c)
-               (peer-cache host port))]
-     (assoc con :type :peer))))
-
-(defn peer-dispatch [peer ch client-info]
-  (log/to :peer "[peer-dispatch] new client: " client-info)
-
-  ; TODO: instead enqueue a peer-connection
-  (enqueue (:on-connect peer) {:client-info client-info
-                               :chan ch})
-  (receive-all ch
-    (fn [req]
-      (when req
-        (log/to :peer "[peer-dispatch] req-id: " (:id req))
-        (let [id (:id req)
-              msg (:body req)]
-          (try
-            (let [graph (:graph peer)
-                  response
-                  (cond
-                    (= ROOT-ID msg)
-                    (with-graph graph (root-node))
-
-                    (uuid? msg)
-                    (with-graph graph (find-node msg))
-
-                    (= :ping msg)
-                    :pong
-
-                    (= :query (:type msg))
-                    (do
-                      (log/to :peer "[peer-handler] query")
-                      (enqueue (:on-query peer) {:chan ch
-                                                 :query msg
-                                                 :client-info client-info})
-                      (with-graph graph (query msg)))
-
-                    (= :sub-query (:type msg))
-                    (do
-                      (log/to :peer "[peer-handler] sub-query")
-                      (with-graph graph (sub-query ch msg))))]
-
-              (let [res {:type :response :id id :body response}]
-                (log/to :peer "[peer-dispatch] response: " res)
-                (unless (= :sub-query (:type msg))
-                        (enqueue ch res))))
-            (catch Exception e
-              (log/to :peer "server error")
-              (log/to :peer "------------")
-              (log/to :peer "req from " client-info ": " req)
-              (log/to :peer "caused exception: " e (.printStackTrace e)))))))))
+          (let [res {:type :response :id id :body response}]
+            (log/to :peer "[peer-dispatch] response: " res)
+            (unless (= :sub-query (:type msg))
+                    (enqueue ch res))))
+        (catch Exception e
+          (log/to :peer "server error")
+          (log/to :peer "------------")
+          (log/to :peer "req from " client-info ": " req)
+          (log/to :peer "caused exception: " e (.printStackTrace e)))))))
 
 (defn- register-peer-connection
+  "Connect to local peer and ping hello."
   [host port])
 
 (defn- peer-server
@@ -121,7 +63,11 @@
   [peer]
   (log/to :peer "[peer-server] starting on port: " (:port peer))
   (let [s (start-object-server
-            (partial peer-dispatch peer)
+            (fn [chan client-info]
+              (log/to :peer "[peer-server] new client: " client-info)
+              (enqueue (:on-connect peer) 
+                       (register-connection chan client-info))
+              (receive-all chan (partial peer-dispatch peer chan)))
             {:port (:port peer)})]
     (reset! (:server peer) s)))
 
@@ -220,10 +166,8 @@
                             (@(:server p))
                             (reset! (:server p) nil))
     (contains? p :connection) (do
-                                (close-connection (:connection p)))))
+                                (close (:connection p)))))
 
-
-(comment
 (defprotocol Peer
   (id [])
   (url [])
@@ -232,24 +176,10 @@
   (numPeers [])
   (close []))
 
-; check-live-peers: ping all peers and drop ones that don't respond
-; use Upnp library to figure out public port and IP to create URL
+(comment
 
-; peer config options
-; :port
-; :max-peers
-; :peer-id
-
-(defprotocol PeerConnection
-  (name [])
-  (setKey [k])
-  (request [])
-  (notify [])
-  (request-channel [])
-  (notify-channel [])
-  (disconnect-channel [])
-  (error-channel [])
-  (close []))
+; * use Upnp library to figure out public port and IP to create own URL
+; * check-live-peers: ping all peers and drop ones that don't respond
 
 (defprotocol Queryable
   (query [])
