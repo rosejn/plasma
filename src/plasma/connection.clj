@@ -4,34 +4,32 @@
   (:require [logjam.core :as log]
 						[lamina.core :as lamina]))
 
-(log/system :con)
-
 (def *connection-timeout* 2000)
 (def *cache-keep-ratio* 0.8)
 
-(defonce connection-cache* (atom {}))
+(log/repl :con)
 
 (defprotocol IClosable
   (close [this]))
 
 (defprotocol IConnection
-  (request       
-    [con method params] 
-    "Send a request over this connection. Returns a constant channel 
+  (request
+    [con method params]
+    "Send a request over this connection. Returns a constant channel
     that will receive the single result message.")
 
   (request-channel
-    [con] 
-    "Returns a channel for incoming requests.  The channel will receive 
-    [ch request] pairs, and the rpc-response or rpc-error enqueued on 
+    [con]
+    "Returns a channel for incoming requests.  The channel will receive
+    [ch request] pairs, and the rpc-response or rpc-error enqueued on
     ch will be sent as the response.")
 
-  (notify        
-    [con method params] 
+  (notify
+    [con method params]
     "Send a notification over this connection.")
-  
-  (notification-channel 
-    [con] 
+
+  (notification-channel
+    [con]
     "Returns a channel for incoming notifications.")
 
   (stream
@@ -41,8 +39,7 @@
   (stream-channel
     [con]
     "Returns a channel for incoming stream requests.  The channel will receive
-    [ch request] pairs, and the ch can be used as a named bi-direction stream.")
-  )
+    [ch request] pairs, and the ch can be used as a named bi-direction stream."))
 
 (defn- type-channel
   "Returns a channel of incoming messages on chan of only the given type."
@@ -65,7 +62,7 @@
 (defn- wrapped-stream-channel
   [chan id]
   (let [s-in-chan (lamina/map* #(:msg %)
-                               (lamina/filter* #(= id (:id %)) 
+                               (lamina/filter* #(= id (:id %))
                                   (type-channel chan :stream)))
         wrap-chan (lamina/channel)
         [snd-chan rcv-chan] (lamina/channel-pair)]
@@ -82,7 +79,7 @@
   [url chan]
   IConnection
 
-  (request 
+  (request
     [this method params]
     (let [id (uuid)
           res (response-channel chan id)]
@@ -94,12 +91,12 @@
     (lamina/map* (fn [request] [chan request])
                  (type-channel chan :request)))
 
-  (notify 
+  (notify
     [this method params]
     (lamina/enqueue chan (rpc-notify method params)))
 
   (notification-channel
-    [this] 
+    [this]
     (type-channel chan :notification))
 
   (stream
@@ -120,7 +117,7 @@
 
   IClosable
   (close
-    [this] 
+    [this]
     (lamina/close chan)))
 
 (defn- make-connection
@@ -129,11 +126,90 @@
    (let [{:keys [proto host port]} (url-map url)
          client (object-client {:host host :port port})
          chan   (lamina/wait-for-result client *connection-timeout*)]
-     ;(lamina/receive-all (type-channel chan :response) 
+     ;(lamina/receive-all (type-channel chan :response)
      ;                    #(log/to :con "client msg: " %))
      (PeerConnection. url chan)))
   ([ch {:keys [remote-addr]}]
    (PeerConnection. (str "plasma://" remote-addr) ch)))
+
+
+(defprotocol IConnectionCache
+  "A general purpose PeerConnection cache."
+
+  (get-connection
+    [this url]
+    "Returns a connection to the peer listening at URL, using a cached
+    connection when available.")
+
+  (register-connection
+    [this ch url]
+    "Add a new connection to the cache that will use an existing channel and
+    URL.  Used to register connections initiated remotely.
+    Returns a Connection.")
+
+  (refresh-connection
+    [this con]
+    "Updates the usage timestamp on this connection to keep it from being
+    removed from the cache.")
+
+  (purge-connections
+    [this]
+    "Apply the cache policy to the current set of connections, possibly
+    removing old or unused connections to make space for new ones.  This is
+    called automatically so it should normally not need to be called manually.")
+
+  (clear-connections
+    [this]
+    "Remove all connections from the cache.")
+
+  (connection-count
+    [this]
+    "Get the current number of connections in the cache."))
+
+(defrecord ConnectionCache
+  [connections* flush-fn]
+
+  IConnectionCache
+
+  (get-connection
+    [this url]
+    (let [con (or (get @connections* url)
+                  (make-connection url))]
+      (refresh-connection this con)))
+
+  (register-connection
+    [this ch client-info]
+    (refresh-connection this (make-connection ch client-info)))
+
+  (refresh-connection
+    [this con]
+    (let [con (assoc con :last-used (current-time))]
+      (swap! connections* assoc (:url con) con)
+      (when (>= (connection-count this) (config :connection-cache-limit))
+        (purge-connections this))
+      con))
+
+  (clear-connections
+    [this]
+    (doseq [con (vals @connections*)]
+      (close con))
+    (reset! connections* {}))
+
+  (purge-connections
+    [this]
+    (let [n-to-drop (- (connection-count this)
+                       (* (config :connection-cache-limit)
+                          *cache-keep-ratio*))]
+      (swap! connections*
+             (fn [conn-map]
+               (let [[to-keep to-drop] (flush-fn (vals conn-map) n-to-drop)]
+                 (doseq [con to-drop]
+                   (close con))
+                 (zipmap (map :url to-keep) to-keep))))))
+
+  (connection-count
+    [this]
+    (count @connections*)))
 
 (defn- lru-flush
   "Remove the least recently used connections."
@@ -143,74 +219,46 @@
         to-keep (drop n-to-drop sorted)]
     [to-keep to-drop]))
 
-(def *cache-policy* lru-flush)
-
-(defn- flush-connection-cache
+; TODO: support options for the cache size and timeout...
+; * make connections asynchronous and call a callback or something
+(defn connection-manager
+  "Returns a connection cache that can be used to efficiently manage a large
+  number of network connections, where the least-recently-used connections
+  are dropped as new connections are made."
   []
-  (let [n-to-drop (- (count @connection-cache*) 
-                   (* (config :connection-cache-limit) 
-                      *cache-keep-ratio*))]
-    (swap! connection-cache*
-           (fn [conn-map]
-             (let [[to-keep to-drop] (*cache-policy* (vals conn-map) n-to-drop)]
-               (doseq [con to-drop]
-                 (close con))
-               (zipmap (map :url to-keep) to-keep))))))
-
-(defn clear-connection-cache []
-  (doseq [con (vals @connection-cache*)]
-    (close con))
-  (reset! connection-cache* {}))
-
-(defn refresh-connection
-  [con]
-  (let [con (assoc con :last-used (current-time))]
-    (swap! connection-cache* assoc (:url con) con)
-    (if (>= (count @connection-cache*) (config :connection-cache-limit))
-      (flush-connection-cache))
-    con))
-
-(defn connection
-  "Returns a connection to the peer listening at URL, using a cached
-  connection when available."
-  [url]
-  (let [con (or (get @connection-cache* url)
-                (make-connection url))]
-    (refresh-connection con)))
-
-(defn register-connection
-  "Register a channel that was initiated externally so we can use
-  it for future outgoing requests. Returns an IConnection."
-  [ch client-info]
-  (refresh-connection (make-connection ch client-info)))
+  (ConnectionCache. (atom {}) lru-flush))
 
 (defprotocol IConnectionListener
-  (connection-channel 
-    [this] 
-    "Returns a channel that will receive a Connection for each new incoming
-    connection."))
+  (on-connect
+    [this handler]
+    "Register a handler function to be called on each incoming connection.  The
+    handler will be passed a Connection."))
 
 (defrecord ConnectionListener
   [server port chan]
+
   IConnectionListener
-  (connection-channel 
-    [this] 
-    (lamina/fork chan))
+  (on-connect
+    [this handler]
+    (lamina/receive-all 
+      (lamina/filter* #(not (nil? %)) chan) 
+      handler))
 
   IClosable
-  (close 
+  (close
     [this]
     (server)
     (lamina/close chan)))
 
 (defn connection-listener
-  "Listen on a port for incoming connections."
-  [port]
-  (let [con-chan (lamina/channel)
+  "Listen on a port for incoming connections, automatically registering them."
+  [manager port]
+  (let [connect-chan (lamina/channel)
         s (start-object-server
             (fn [chan client-info]
-              (log/to :con "connection: " client-info)
-              (lamina/enqueue con-chan (register-connection chan client-info)))
+              ;(log/to :con "connection: " client-info)
+              (let [con (register-connection manager chan client-info)]
+                (lamina/enqueue connect-chan con)))
             {:port port})]
-    (ConnectionListener. s port con-chan)))
-    
+    (ConnectionListener. s port connect-chan)))
+

@@ -170,6 +170,9 @@
       flat-preds)))
 
 (defn- load-props
+  "Add a property loading operator to the query plan to add property
+  values to the run-time path-map for downstream operators to utilize.
+  This is how, for example, select operators can access property values."
   [plan bind-sym properties]
   (let [bind-op (get (:pbind plan) bind-sym)
         root-op (:root plan)
@@ -221,6 +224,7 @@
     (assoc plan :params param-map)))
 
 (defn- plan-receiver
+  "Add a receive operator to the root of the query plan."
   [plan]
   (let [op (plan-op :receive
                     :deps [(:root plan)])

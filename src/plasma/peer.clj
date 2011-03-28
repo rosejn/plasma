@@ -1,17 +1,45 @@
 (ns plasma.peer
-  (:use [lamina core]
-        [aleph object]
-        [plasma config util core query]
+  (:use [plasma config util connection core query]
         jiraph.graph)
-  (:require [logjam.core :as log]))
+  (:require [logjam.core :as log]
+            [lamina.core :as lamina]))
 
-(log/channel :peer :debug)
-;(log/console :peer)
+(log/repl :peer)
 
-; peer config options
-; :port
-; :max-peers
-; :peer-id
+(defprotocol IPeer
+;  (query [this q])
+  (connect-channel 
+    [this] 
+    "Returns a channel that will receive an event each time an incoming
+    connection is made to this peer.")
+  (stop  [this]))
+
+(defrecord Peer
+  [graph port listener] ; peer-id, port, max-peers
+  IPeer
+  (stop [this])
+  ;(query [this q])
+
+  IClosable
+  (close [this] (close listener)))
+
+(defn peer
+  "Create a new peer using a graph database located at path, optionally
+  specifying the port number to listen on."
+  ([path] (peer path {}))
+  ([path options]
+   (let [port (get options :port (config :peer-port))
+         g (graph path)
+         listener (connection-listener port)
+         on-connect (lamina/channel)
+         on-query (lamina/channel)]
+     (comment when (:presence options)
+       (receive-all (presence-listener)
+                    (fn [{:keys [peer-id peer-port peer-host]}]
+                      (register-peer-connection peer-host peer-port))))
+     (Peer. g port listener))))
+
+(comment
 
 (defn peer-dispatch [peer ch req]
   (when req
@@ -116,26 +144,7 @@
 
 ;(log/to :peer "[peer] path:" path " port:" port)
 
-(defn local-peer
-  "Create a new peer using a graph database located at path, optionally
-  specifying the port number to listen on."
-  ([path] (local-peer path {}))
-  ([path options]
-   (let [port (get options :port (config :peer-port))
-         g (graph path)
-         p {:type :local-peer
-            :server (atom nil)
-            :new-peers (atom nil)
-            :port port
-            :graph g
-            :on-connect (channel)
-            :on-query (channel)}]
-     (peer-server p)
-     (when (:presence options)
-       (receive-all (presence-listener)
-                    (fn [{:keys [peer-id peer-port peer-host]}]
-                      (register-peer-connection peer-host peer-port))))
-     p)))
+
 
 (defn on-peer-connect
   "Returns an event channel of new peer connections."
@@ -167,16 +176,6 @@
                             (reset! (:server p) nil))
     (contains? p :connection) (do
                                 (close (:connection p)))))
-
-(defprotocol Peer
-  (id [])
-  (url [])
-  (onNewConnection [])
-  (query [])
-  (numPeers [])
-  (close []))
-
-(comment
 
 ; * use Upnp library to figure out public port and IP to create own URL
 ; * check-live-peers: ping all peers and drop ones that don't respond
@@ -220,8 +219,6 @@
 ; leave
 ; send-message
 ; on-message-received
-
-
 
 ; Example apps
 ;

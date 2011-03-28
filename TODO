@@ -4,7 +4,6 @@ Supporting experiments:
 * insertion
  - to push nodes onto a peer
 
-
 * enable logging of typical networking metrics:
  - bytes
  - messages
