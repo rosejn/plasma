@@ -6,7 +6,7 @@
         test-utils)
   (:require [logjam.core :as log]))
 
-(deftest parameter-op-test []
+(defn parameter-op-test []
   (let [id (uuid)
         p1 (parameter-op id)
         p2 (parameter-op id)]
@@ -20,7 +20,7 @@
           (closed? (:out p1))
           (closed? (:out p2))))))
 
-(deftest traverse-op-test
+(defn traverse-op-test []
   (let [id (uuid)
         p1 (parameter-op id ROOT-ID)
         t1 (traverse-op (uuid) nil nil (:id p1) :music)
@@ -62,7 +62,7 @@
 
 ; (path [synth [:music :synths :synth]]
 ;   (where (> (:score synth) 0.3)))
-(deftest select-op-test []
+(defn select-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         sel-pred {:type :plasma.operator/predicate
@@ -80,7 +80,7 @@
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
 
-(deftest aggregate-op-test []
+(defn aggregate-op-test []
   (let [tree (traverse-base)
         {:keys [p1 r1 t3]} tree
         agg  (aggregate-op (uuid) r1)
@@ -95,7 +95,7 @@
 ; (-> (path [synth [:music :synths :synth]])
 ;   (where (= :kick (:label synth)))
 ;   (sort synth :score :asc))
-(deftest sort-op-test []
+(defn sort-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         pl (property-op (uuid) j3 (:id t3) [:score])
@@ -112,7 +112,7 @@
     (is (= (reverse '(:kick :bass :snare :hat))
            (map #(:label (find-node %)) (result tree-asc))))))
 
-(deftest min-op-test []
+(defn min-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         min-desc (min-op (uuid) j3 (:id t3) :score)
@@ -123,7 +123,7 @@
     (is (= '(:hat)
            (map #(:label (find-node %)) (result tree-desc))))))
 
-(deftest max-op-test []
+(defn max-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         max-desc (max-op (uuid) j3 (:id t3) :score)
@@ -134,7 +134,7 @@
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
 
-(deftest limit-op-test []
+(defn limit-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         limit-desc (limit-op (uuid) j3 2)
@@ -147,7 +147,7 @@
 ; How do you correctly test something that is supposed to return
 ; random results?  It seems to be working correctly, but ideally we'd be
 ; able to check for something a bit more rigorous.
-(deftest choose-op-test []
+(defn choose-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         choose-desc (choose-op (uuid) j3 2)
@@ -164,7 +164,7 @@
         {:keys [t2 j3]} tree]
     (operator-deps j3 (:id t2))))
 
-(deftest send-receive-op-test []
+(defn send-receive-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         sel-pred {:type :plasma.operator/predicate
@@ -182,7 +182,7 @@
     (is (= #{:kick :bass :snare}
            (set (map #(:label (find-node %)) (result tree)))))))
 
-(comment deftest avg-op-test []
+(comment defn avg-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         avg-desc (avg-op (uuid) j3 (:id t3) :score)
@@ -193,7 +193,7 @@
     (is (= '(:kick)
            (map #(:label (find-node %)) (result tree-desc))))))
 
-(deftest ops-test
+(defn ops-test []
   (parameter-op-test)
   (traverse-op-test)
   (select-op-test)
@@ -204,6 +204,9 @@
   (limit-op-test)
   (choose-op-test)
   (send-receive-op-test))
+
+(deftest test-all
+  (test-fixture ops-test))
 
 (defn test-ns-hook
   []

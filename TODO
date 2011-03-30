@@ -1,4 +1,7 @@
----------------------
+* Make the standard query function return a result channel and then
+have some other helpers for getting the results and supporting a timeout
+
+------------
 Supporting experiments:
 
 * insertion

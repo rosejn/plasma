@@ -1,5 +1,9 @@
 (ns plasma.util)
 
+(defn plasma-url
+  [host port]
+  (str "plasma://" host ":" port))
+
 (defn url-map [url]
   (let [match (re-find #"(.*)://([a-zA-Z-_.]*):([0-9]*)" url)
         [_ proto host port] match]

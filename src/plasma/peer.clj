@@ -1,43 +1,151 @@
 (ns plasma.peer
-  (:use [plasma config util connection core query]
-        jiraph.graph)
+  (:use [plasma config util core connection presence rpc]
+        jiraph.graph
+        clojure.stacktrace)
   (:require [logjam.core :as log]
-            [lamina.core :as lamina]))
+            [lamina.core :as lamina]
+            [plasma.query :as q]))
 
 (log/repl :peer)
 
-(defprotocol IPeer
-;  (query [this q])
-  (connect-channel 
-    [this] 
-    "Returns a channel that will receive an event each time an incoming
-    connection is made to this peer.")
-  (stop  [this]))
+(defprotocol IQueryable
+  (ping
+    [this]
+    "Simple test function to check that the peer is available.")
 
-(defrecord Peer
-  [graph port listener] ; peer-id, port, max-peers
-  IPeer
-  (stop [this])
-  ;(query [this q])
+  ; TODO: change this to find-node once core and query are refactored...
+  (node-by-uuid
+    [this id]
+    "Lookup a node by UUID.")
+
+  (query 
+    [this q] 
+    "Issue a query against the peer's graph.")
+
+  (sub-query
+    [this ch plan]
+    "Execute a sub-query against the peer's graph, streaming the results back
+    to the source of the sub-query.")
+
+  (recur-query
+    [this q]
+    "Recursively execute a query."))
+
+(def *manager* nil)
+
+(defrecord PlasmaPeer
+  [manager graph port listener] ; peer-id, port, max-peers
+
+  IQueryable
+  (ping [_] :pong)
+
+  (node-by-uuid
+    [this id]
+    (with-graph graph
+                (find-node id)))
+  (query 
+    [this plan] 
+    (binding [*manager* manager]
+      (with-graph graph 
+                  (q/query plan))))
+
+  (sub-query
+    [this ch plan]
+    (binding [*manager* manager]
+      (with-graph graph 
+                  (q/sub-query ch plan))))
+
+  (recur-query
+    [this q])
 
   IClosable
   (close [this] (close listener)))
+
+(defn- setup-presence-listener
+  [p]
+  (lamina/receive-all (presence-listener)
+    (fn [{:keys [peer-id peer-port peer-host]}]
+      (register-connection (:manager p) peer-host peer-port))))
+
+(defn- request-handler
+  [peer [ch req]]
+  (log/to :peer "rpc-request: " (:id req))
+  (try
+    (let [res (case (:method req)
+                'ping (ping peer)
+                'node-by-uuid (node-by-uuid peer (first (:params req)))
+                'query (query peer (first (:params req))))]
+      ;(log/to :peer "result: " res)
+      (lamina/enqueue ch (rpc-response req res)))
+    (catch Exception e
+      (log/to :peer "error handling request!\n------------------\n" 
+              (with-out-str (print-cause-trace e)))
+      (.printStackTrace e)
+      (lamina/enqueue ch 
+                      (rpc-error req "Exception occured while handling request." e)))))
+
+(defn- stream-handler
+  [peer [ch req]]
+  (log/to :peer "stream-request: " (:id req))
+  (try
+    (case (:method req)
+      'sub-query (sub-query peer ch (first (:params req))))
+    (catch Exception e
+      (log/to :peer "error handling stream request!\n"
+              "-------------------------------\n" 
+              (with-out-str (print-cause-trace e))))))
+
+(defn- setup-peer-connection-handlers
+  [peer con]
+  (lamina/receive-all (request-channel con) 
+                      (partial request-handler peer))
+  (lamina/receive-all (stream-channel con) 
+                      (partial stream-handler peer)))
 
 (defn peer
   "Create a new peer using a graph database located at path, optionally
   specifying the port number to listen on."
   ([path] (peer path {}))
-  ([path options]
+  ([manager path options]
    (let [port (get options :port (config :peer-port))
          g (graph path)
-         listener (connection-listener port)
-         on-connect (lamina/channel)
-         on-query (lamina/channel)]
-     (comment when (:presence options)
-       (receive-all (presence-listener)
-                    (fn [{:keys [peer-id peer-port peer-host]}]
-                      (register-peer-connection peer-host peer-port))))
-     (Peer. g port listener))))
+         listener (connection-listener manager port)
+         p (PlasmaPeer. manager g port listener)]
+     (on-connect listener (partial setup-peer-connection-handlers p))
+
+     (when (:presence options)
+       (setup-presence-listener p))
+     p)))
+
+;TODO: Make these methods of a PeerConnection
+
+(defn peer-node
+  "Lookup a node by ID on a remote peer."
+  [con id & [timeout]]
+  (let [res-chan (request con 'node-by-uuid [id])]
+    (if timeout
+      (:result (lamina/wait-for-message res-chan timeout))
+      res-chan)))
+
+; TODO: Return a result channel and enqueue an error if we fail
+(defn peer-query
+  "Send a query to the given peer.  Returns a constant channel
+  that will get the result of the query when it arrives."
+  [con q & [timeout]]
+  (let [res-chan (request con 'query [q])]
+    (lamina/receive-all (lamina/fork res-chan) 
+                        #(log/to :peer "peer-query result: " %))
+    (if timeout
+      (:result (lamina/wait-for-message res-chan timeout))
+      res-chan)))
+
+(defn peer-sub-query
+  [con q]
+  (stream con 'sub-query [q]))
+
+(defmethod peer-sender "plasma"
+  [url]
+  (partial peer-sub-query (get-connection *manager* url)))
 
 (comment
 
@@ -93,7 +201,7 @@
   (let [s (start-object-server
             (fn [chan client-info]
               (log/to :peer "[peer-server] new client: " client-info)
-              (enqueue (:on-connect peer) 
+              (enqueue (:on-connect peer)
                        (register-connection chan client-info))
               (receive-all chan (partial peer-dispatch peer chan)))
             {:port (:port peer)})]
@@ -104,37 +212,6 @@
   (if (= :local-peer (:type peer))
     (throw (Exception. "Cannot open a connection to a local peer.")))
   (wait-for-result (:connection peer) 2000))
-
-(defn peer-query
-  "Send a query to the given peer.  Returns a constant channel
-  that will get the result of the query when it arrives."
-  [peer q & [timeout]]
-  (log/to :peer "[peer-query] peer: " peer)
-  (let [req {:type :request :id (uuid) :body q}
-        chan (get-peer-connection peer)
-        result (constant-channel)
-        res-filter (take* 1
-                          (map* :body
-                                (filter* #(= (:id req) (:id %))
-                                   chan)))]
-    (enqueue chan req)
-    (siphon res-filter result)
-    (if timeout
-      (wait-for-message result timeout)
-      result)))
-
-(defn peer-sub-query
-  [peer q]
-  (log/to :peer "[peer-query] peer: " peer)
-  (let [req {:type :request :id (uuid) :body q}
-        chan   (get-peer-connection peer)]
-    (enqueue chan req)
-    chan))
-
-(defmethod peer-sender "plasma"
-  [url]
-  (let [{:keys [host port]} (url-map url)]
-    (partial peer-sub-query (peer-connection host port))))
 
 (defn- init-peer-graph
   []
@@ -162,23 +239,14 @@
   [p]
   (fork (:on-query p)))
 
-(defn peer-listen
-  "Start listening for connections on the given peer."
-  [p]
-  (peer-server p))
-
-(defn peer-close
-  "Stop listening for incoming connections."
-  [p]
-  (cond
-    (contains? p :server) (do
-                            (@(:server p))
-                            (reset! (:server p) nil))
-    (contains? p :connection) (do
-                                (close (:connection p)))))
-
 ; * use Upnp library to figure out public port and IP to create own URL
 ; * check-live-peers: ping all peers and drop ones that don't respond
+
+(defprotocol IQueryable
+  (query 
+    [this q & [timeout]]
+    "Execute a graph query, returns a channel onto which the results 
+    will be enqueued."))
 
 (defprotocol Queryable
   (query [])

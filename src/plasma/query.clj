@@ -6,7 +6,7 @@
             [clojure (set :as set)]
             [logjam.core :as log]))
 
-(log/channel :query :debug)
+;(log/channel :query :debug)
 (log/channel :optimize :query)
 (log/channel :build :query)
 
@@ -538,6 +538,7 @@
   (let [plan (with-send-channel plan ch)
         plan (optimize-plan plan)
         tree (query-tree plan)]
+    (log/to :query "running sub-query: " (:id plan))
     (run-query tree {})))
 
 (def DEFAULT-HTL 50)

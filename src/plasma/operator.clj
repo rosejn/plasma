@@ -11,8 +11,8 @@
 ; ID of the operator that placed it into the PT and as its value the UUID of
 ; a graph node.
 
-(log/channel :op :debug)
-(log/channel :flow :op)    ; log values flowing through the operator graph
+;(log/channel :op :debug)
+(log/channel :flow :debug)    ; log values flowing through the operator graph
 (log/channel :close :flow) ; log operators closing their output channels
 
 (defn- close-log
@@ -54,13 +54,13 @@
   "Returns the operator tree from the root out to the end-id,
   and no further."
   [plan start-id end-id]
-  (log/to :op "[sub-query-ops] start-plan: " plan)
+  ;(log/to :op "[sub-query-ops] start-plan: " plan)
   (let [ops (:ops plan)]
     (loop [loc (operator-deps-zip plan start-id end-id)
            sub-query-ops {}]
       (let [op-id (zip/node loc)
             op-node (get ops op-id)]
-        (log/to :sub-query "[sub-query-ops] op-node: " op-node)
+        ;(log/to :sub-query "[sub-query-ops] op-node: " op-node)
         (if (zip/end? loc)
           (assoc sub-query-ops op-id op-node)
           (recur (zip/next loc)
@@ -101,9 +101,10 @@
                        s-id send-op
                        p-id param-op)]
     (assoc plan
+           :type :sub-query
+           :id (uuid)
            :root (:id send-op)
            :params {start-node p-id}
-           :type :sub-query
            :ops new-ops)))
 
 (defn remote-sub-query
@@ -115,7 +116,8 @@
   [plan end-id start-id url]
   (let [sub-query (build-sub-query plan start-id end-id)
         sender (peer-sender url)]
-    (log/to :op "[remote-sub-query] sub-query: " sub-query)
+    (log/to :op "sending remote-sub-query: " (:id sub-query))
+    ;(log/to :op "[remote-sub-query] sub-query: " sub-query)
     (sender sub-query)))
 
 (defn parameter-op
@@ -171,7 +173,7 @@
   channel."
   [id left dest]
   {:pre [(and (channel? (:out left)) (channel? dest))]}
-  (log/format :op "[send] left: %s dest: %s" left dest)
+  ;(log/format :op "[send] left: %s dest: %s" left dest)
   (let [left-out (:out left)
         out (channel)]
     (siphon left-out out)
@@ -211,7 +213,7 @@
             (cond
               (proxy-node? src-id)
               (let [proxy (:proxy src-node)]
-                    (log/to :flow "[traverse] proxy:" proxy)
+                    (log/to :flow "[traverse] proxy:" proxy "[" src-id "]")
                     ; Send the remote-sub-query channel to the recv operator
                     (enqueue recv-chan
                              (remote-sub-query plan id src-id proxy)))
@@ -220,8 +222,7 @@
               (let [tgts (keys (get-edges src-id edge-pred-fn))]
                 (log/to :flow "[traverse] "
                         src-id " - "
-                        edge-predicate " -> "
-                        "<" (count tgts) " matches>")
+                        edge-predicate " -> " tgts)
                 (siphon (apply channel (map #(assoc pt id %) tgts))
                         out)))))))
 
@@ -407,7 +408,7 @@
    :out out}))
 
 (defn project-op
-	"Project will turn a stream of PTs into a stream of either node UUIDs or node 
+	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties."
 	[id left project-key props?]
   (let [left-out (:out left)
@@ -447,7 +448,7 @@
     (aggregate-op id left choose-fn)))
 
 (comment defn recurse-op
-  "Recursively executes a query, where the output of one iteration is fed as 
+  "Recursively executes a query, where the output of one iteration is fed as
   input to the next."
   [id left param]
   (siphon left param))

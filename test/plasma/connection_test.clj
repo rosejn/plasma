@@ -1,6 +1,6 @@
 (ns plasma.connection-test
   (:use clojure.test
-        [plasma config connection rpc])
+        [plasma config util connection rpc])
   (:require [logjam.core :as log]
             [lamina.core :as lamina]))
 
@@ -21,15 +21,15 @@
   (close [_]))
 
 (deftest connection-cache-test
-  (let [cache (connection-cache)]
+  (let [manager (connection-manager)]
     (try
       (dotimes [i 300]
-        (refresh-connection cache (MockConnection.
+        (refresh-connection manager (MockConnection.
                                     (str "tcp://plasma.org:" i)))
-        (is (<= (connection-count cache)
+        (is (<= (connection-count manager)
                 (config :connection-cache-limit))))
       (finally
-        (clear-connections cache)))))
+        (clear-connections manager)))))
 
 (deftest connection-rpc-test
   (let [manager (connection-manager)
@@ -44,7 +44,7 @@
                       res (rpc-response req val)]
                   (lamina/enqueue ch res)))))))
 
-        (let [client (get-connection manager "plasma://localhost:1234")]
+        (let [client (get-connection manager (plasma-url "localhost" 1234))]
           (dotimes [i 20]
             (let [res-chan (request client 'foo [i])
                   res (lamina/wait-for-message res-chan 100)]
@@ -64,7 +64,7 @@
             (lamina/receive-all (notification-channel con)
               (fn [event]
                 (swap! events conj event)))))
-        (let [client (get-connection manager "plasma://localhost:1234")]
+        (let [client (get-connection manager (plasma-url "localhost" 1234))]
           (dotimes [i 20]
             (notify client 'foo [:a :b :c]))
           (close client))
@@ -87,7 +87,7 @@
                                   (fn [v]
                                     (lamina/enqueue s-chan (inc v))))))))
 
-        (let [client (get-connection manager "plasma://localhost:1234")
+        (let [client (get-connection manager (plasma-url "localhost" 1234))
               s-chan (stream client 'foo [1])
               res (atom nil)]
           (lamina/receive s-chan #(lamina/enqueue s-chan (inc %)))

@@ -73,9 +73,14 @@
                      :msg msg})
                   rcv-chan)
             chan)
+    (lamina/receive-all (lamina/fork snd-chan)
+      #(log/to :stream "send: " %))
+    (lamina/receive-all (lamina/fork rcv-chan)
+      #(log/to :stream "recv: " %))
+
     snd-chan))
 
-(defrecord PeerConnection
+(defrecord Connection
   [url chan]
   IConnection
 
@@ -128,9 +133,9 @@
          chan   (lamina/wait-for-result client *connection-timeout*)]
      ;(lamina/receive-all (type-channel chan :response)
      ;                    #(log/to :con "client msg: " %))
-     (PeerConnection. url chan)))
+     (Connection. url chan)))
   ([ch {:keys [remote-addr]}]
-   (PeerConnection. (str "plasma://" remote-addr) ch)))
+   (Connection. (str "plasma://" remote-addr) ch)))
 
 
 (defprotocol IConnectionCache
