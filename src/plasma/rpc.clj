@@ -18,11 +18,11 @@
    :id (:id req)
    :result val})
 
-(defn rpc-notify
-  "An RPC notification is a method call that doesn't expect a response."
-  [method params]
-  {:type :notification
-   :method method
+(defn rpc-event
+  "An RPC event is a one-shot message that doesn't expect a response."
+  [id params]
+  {:type :event
+   :id id
    :params params})
 
 (defn rpc-error

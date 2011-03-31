@@ -13,8 +13,8 @@
 (log/repl :peer)
 
 (deftest ping-test
-  (let [manager (connection-manager)
-        p (peer manager "db/p1" {:port 1234})]
+  (let [p (peer "db/p1" {:port 1234})
+        manager (:manager peer)]
     (try
       (let [client (get-connection manager (plasma-url "localhost" 1234))]
         (dotimes [i 20]
@@ -23,8 +23,7 @@
             (is (= :pong (:result res)))))
         (close client))
       (finally
-        (close p)
-        (clear-connections manager)))))
+        (close p)))))
 
 (defn- reset-peer
   [p]
@@ -37,8 +36,8 @@
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
-        manager (connection-manager)
-        local (peer manager "db/p1" {:port port})]
+        local (peer "db/p1" {:port port})
+        manager (:manager local)]
     (try
       (reset-peer local)
       (let [p (get-connection manager (plasma-url "localhost" port))]
@@ -47,13 +46,14 @@
         (let [q (q/path [synth [:music :synths :synth]]
                   (where (>= (:score synth) 0.6)))
               lres (query local q)
-              res (peer-query p q 2000)]
-          (is (= res lres))
+              res (peer-query p q 200)
+              chan-res (lamina/channel-seq
+                         (query-channel local q) 200)]
+          (is (= res lres chan-res))
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label (map #(peer-node p % 1000) res)))))))
       (finally
-        (close local)
-        (clear-connections manager)))))
+        (close local)))))
 
 (deftest proxy-node-test []
   (dosync (alter config* assoc
@@ -61,8 +61,8 @@
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port     (+ 1000 (rand-int 10000))
         manager  (connection-manager)
-        local    (peer manager "db/p1" {:port port})
-        remote   (peer manager "db/p2" {:port (inc port)})
+        local    (peer "db/p1" {:port port :manager manager})
+        remote   (peer "db/p2" {:port (inc port) :manager manager})
         remote-p (get-connection manager (plasma-url "localhost" (inc port)))]
     (try
       (reset-peer local)
@@ -103,12 +103,11 @@
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [n-peers 10
         port (+ 1000 (rand-int 10000))
-        manager  (connection-manager)
-        local    (peer manager "db/p1" {:port port})
+        local (peer "db/p1" {:port port})
         peers (doall
                 (map
                   (fn [n]
-                    (let [p (peer manager (str "db/peer-" n) {:port (+ port n 1)})]
+                    (let [p (peer (:manager local) (str "db/peer-" n) {:port (+ port n 1)})]
                       (with-graph (:graph p)
                         (clear-graph)
                         (let [root-id (root-node)]
@@ -145,8 +144,38 @@
           (is (= n-peers (count res))))
       (finally
         (close local)
-        (close-peers (map first peers))
-        (clear-connections manager)))))
+        (close-peers (map first peers))))))
+
+(defn node-chain
+  "Create a chain of n nodes starting from src, each one connected
+  by an edge labeled label.  Returns the id of the last node in the
+  chain."
+  [src n label]
+  (let [chain-ids (doall
+                    (take (inc n) (iterate
+                              (fn [src-id]
+                                (let [n (node)]
+                                  (edge src-id n :label label)
+                                  n))
+                              src)))]
+    (log/to :peer "----------------------\n"
+            "chain-ids: " (seq chain-ids))
+    (last chain-ids)))
+
+(deftest iter-n-test
+  (let [local (peer "db/p1")]
+    (try
+      (let [end-id (with-graph 
+                     (:graph local)
+                     (clear-graph)
+                     (let [root-id (root-node)]
+                       (log/to :peer "root-id: " root-id)
+                       (node-chain root-id 10 :foo)))
+            res-chan (iter-n-query local 10 (q/path [:foo]))]
+          (is (= end-id 
+                 (first (lamina/channel-seq res-chan 200)))))
+      (finally
+        (close local)))))
 
 (comment deftest peer-event-test []
   (let [local (local-peer "db/p1")

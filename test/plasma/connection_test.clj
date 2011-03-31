@@ -12,8 +12,9 @@
   IConnection
   (request [c m p])
   (request-channel [_])
-  (notify [c m p])
-  (notification-channel [_])
+  (send-event [c id p])
+  (event-channel [c]) 
+  (event-channel [c id])
   (stream [c m p])
   (stream-channel [c])
 
@@ -54,19 +55,19 @@
         (close listener)
         (clear-connections manager)))))
 
-(deftest connection-notification-test
+(deftest connection-event-test
   (let [manager (connection-manager)
         listener (connection-listener manager 1234)]
     (try
       (let [events (atom [])]
         (on-connect listener
           (fn [con]
-            (lamina/receive-all (notification-channel con)
+            (lamina/receive-all (event-channel con)
               (fn [event]
                 (swap! events conj event)))))
         (let [client (get-connection manager (plasma-url "localhost" 1234))]
           (dotimes [i 20]
-            (notify client 'foo [:a :b :c]))
+            (send-event client 'foo [:a :b :c]))
           (close client))
         (Thread/sleep 100)
         (is (= 20 (count @events))))

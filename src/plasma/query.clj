@@ -468,18 +468,24 @@
                      (first (last (:paths plan))))]
             (project plan bind-sym))))
 
+; Query execution is initiated by loading parameters into param-op
+; operator nodes.
 (defn run-query
   "Execute a query by feeding parameters into a query operator tree."
   [tree param-map]
   (unless *graph*
     (throw (Exception. "Cannot run a query without binding a graph.
 \nFor example:\n\t(with-graph G (query q))\n")))
+  (log/to :query "run-query params: " (:params tree)
+          "\nparam-map: " param-map)
   (doseq [[param-name param-id] (:params tree)]
     (let [param-val (if (contains? param-map param-name)
                       (get param-map param-name)
                       param-name)
           param-op (get-in tree [:ops param-id])]
-      (enqueue-and-close (get param-op :in) param-val))))
+      (if (seq? param-val)
+        (apply enqueue-and-close (get param-op :in) param-val)
+        (enqueue-and-close (get param-op :in) param-val)))))
 
 (defn query-results
   [tree & [timeout]]
@@ -496,7 +502,7 @@
   "Issue a query to the currently bound graph, and return a channel
   representing the results."
   [plan & [param-map]]
-  (assert (query? plan))
+;  (assert (query? plan))
   (let [plan (with-result-project plan)
         plan (optimize-plan plan)
         tree (query-tree plan)
@@ -540,50 +546,6 @@
         tree (query-tree plan)]
     (log/to :query "running sub-query: " (:id plan))
     (run-query tree {})))
-
-(def DEFAULT-HTL 50)
-
-(defn- peer-iter
-  "Send an iterative query to a peer using the given proxy node both to
-  get the URL of the peer and also as the query start node."
-  [plan root-proxy])
-
-(defn- peer-result-chan
-  "Returns a channel used to send results to a peer."
-  [url query-id]
-  (let [{:keys [host port]} (url-map url)]
-    ))
-    ;(peer-connection host port)))
-
-; TODO: This can probably be turned into an iter-op operator...?
-(defn- iter*
-  [plan src-id]
-  (let [iter-count (:iter-count plan)
-        plan (assoc plan
-                    :iter-count (dec iter-count))
-        res-chan (query-channel plan)]
-    (if (zero? iter-count)
-      (let [src-url (:src-url plan)
-            query-id (:id plan)
-            ch (peer-result-chan src-url query-id)]
-        (siphon res-chan ch))
-      (receive-all res-chan
-        (fn [v]
-          (if (proxy-node? v)
-            (peer-iter plan v)
-            (iter* plan v)))))))
-
-(defn iter
-  "Execute a query recursively, where the output of one iteration is
-  used as the input to the next for count iterations."
-  ([plan count]
-   (iter plan count {}))
-  ([plan count params]
-   (let [plan (assoc plan
-                     :type :iter-query
-                     :iter-count count
-                     :htl DEFAULT-HTL)]
-     (iter* plan params))))
 
 ; find-node: by uuid
 ; find-edge: by uuid

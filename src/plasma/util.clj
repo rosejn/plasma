@@ -29,3 +29,7 @@
 (defn regexp?
   [obj]
   (= java.util.regex.Pattern (type obj)))
+
+(defn map-fn
+  [m key fn & args]
+  (assoc m key (apply fn (get m key) args)))

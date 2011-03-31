@@ -24,17 +24,19 @@
     [ch request] pairs, and the rpc-response or rpc-error enqueued on
     ch will be sent as the response.")
 
-  (notify
-    [con method params]
-    "Send a notification over this connection.")
+  (send-event
+    [con id params]
+    "Send an event over this connection.")
 
-  (notification-channel
-    [con]
-    "Returns a channel for incoming notifications.")
+  (event-channel
+    [con] [con id]
+    "Returns a channel for incoming events.  If an ID is passed only incoming 
+    events with this ID will be enqueued onto the returned channel.")
 
   (stream
     [con method params]
-    "Open a stream channel on this connection.  Returns a channel that can be used bi-directionally.")
+    "Open a stream channel on this connection.  Returns a channel that can be 
+    used bi-directionally.")
 
   (stream-channel
     [con]
@@ -96,13 +98,18 @@
     (lamina/map* (fn [request] [chan request])
                  (type-channel chan :request)))
 
-  (notify
-    [this method params]
-    (lamina/enqueue chan (rpc-notify method params)))
+  (send-event
+    [this id params]
+    (lamina/enqueue chan (rpc-event id params)))
 
-  (notification-channel
+  (event-channel
     [this]
-    (type-channel chan :notification))
+    (type-channel chan :event))
+
+  (event-channel
+    [this id]
+     (lamina/filter* (fn [req] (= id (:id req)))
+                     (type-channel chan :event)))
 
   (stream
     [this method params]
