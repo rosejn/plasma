@@ -6,8 +6,6 @@
             [lamina.core :as lamina]
             [plasma.query :as q]))
 
-(log/repl :peer)
-
 (defprotocol IQueryable
   (ping
     [this]
@@ -18,7 +16,7 @@
     [this id]
     "Lookup a node by UUID.")
 
-  (query 
+  (query
     [this q] [this q params]
     "Issue a query against the peer's graph.")
 
@@ -35,7 +33,7 @@
   (recur-query
     [this q] [this pred q] [this pred q params]
     "Recursively execute a query.")
-  
+
   (iter-n-query
     [this iq] [this n q] [this n q params]
     "Execute a query recursively, where the output of one iteration is
@@ -55,21 +53,21 @@
     (with-graph graph
                 (find-node id)))
 
-  (query 
-    [this plan] 
+  (query
+    [this plan]
     (query this plan {}))
 
-  (query 
+  (query
     [this plan params]
     (binding [*manager* manager]
-      (with-graph graph 
+      (with-graph graph
                   (q/query plan params))))
 
-  (query-channel 
-    [this plan] 
+  (query-channel
+    [this plan]
     (query-channel this plan {}))
 
-  (query-channel 
+  (query-channel
     [this plan params]
     (binding [*manager* manager]
       (with-graph (:graph this)
@@ -78,11 +76,11 @@
   (sub-query
     [this ch plan]
     (binding [*manager* manager]
-      (with-graph graph 
+      (with-graph graph
                   (q/sub-query ch plan))))
 
   (recur-query
-    [this pred q] 
+    [this pred q]
     (recur-query this pred q {}))
 
   (recur-query
@@ -114,7 +112,7 @@
                ; or recur if not
                (doseq [n res]
                  (if (proxy-node? n)
-                   (peer-recur-query 
+                   (peer-recur-query
                  (receive-all res-chan
                               (fn [v]
                                 (if (proxy-node? v)
@@ -124,7 +122,7 @@
   ; TODO: Support binding to a different parameter than the ROOT-ID
   ; by passing a {:bind 'my-param} map.
   (iter-n-query
-    [this n q] 
+    [this n q]
     (iter-n-query this n q {}))
 
   (iter-n-query
@@ -147,12 +145,12 @@
                            res-chan (query-channel this plan (:iter-params plan))]
                        (lamina/on-closed res-chan
                          (fn []
-                           (cond 
+                           (cond
                              (zero? (:iter-n plan))
                              (lamina/siphon res-chan final-res)
 
                              (zero? (:htl plan))
-                             (lamina/enqueue final-res 
+                             (lamina/enqueue final-res
                                              {:type :error
                                               :msg :htl-reached})
 
@@ -161,7 +159,7 @@
                                    params (assoc (:iter-params plan) ROOT-ID res)
                                    plan (assoc plan :iter-params params)]
                                (log/to :peer "--------------------\n"
-                                       "iter-fn result: " 
+                                       "iter-fn result: "
                                        (seq res)
                                        "\n--------------------------\n")
 
@@ -170,8 +168,8 @@
        final-res))
 
   IClosable
-  (close 
-    [this] 
+  (close
+    [this]
     (close listener)
     (if (:internal-manager options)
       (clear-connections manager))))
@@ -193,10 +191,10 @@
       ;(log/to :peer "result: " res)
       (lamina/enqueue ch (rpc-response req res)))
     (catch Exception e
-      (log/to :peer "error handling request!\n------------------\n" 
+      (log/to :peer "error handling request!\n------------------\n"
               (with-out-str (print-cause-trace e)))
       (.printStackTrace e)
-      (lamina/enqueue ch 
+      (lamina/enqueue ch
         (rpc-error req "Exception occured while handling request." e)))))
 
 (defn- stream-handler
@@ -207,14 +205,14 @@
       'sub-query (sub-query peer ch (first (:params req))))
     (catch Exception e
       (log/to :peer "error handling stream request!\n"
-              "-------------------------------\n" 
+              "-------------------------------\n"
               (with-out-str (print-cause-trace e))))))
 
 (defn- setup-peer-connection-handlers
   [peer con]
-  (lamina/receive-all (request-channel con) 
+  (lamina/receive-all (request-channel con)
                       (partial request-handler peer))
-  (lamina/receive-all (stream-channel con) 
+  (lamina/receive-all (stream-channel con)
                       (partial stream-handler peer)))
 
 (defn peer
@@ -252,7 +250,7 @@
   that will get the result of the query when it arrives."
   [con q & [timeout]]
   (let [res-chan (request con 'query [q])]
-    (lamina/receive-all (lamina/fork res-chan) 
+    (lamina/receive-all (lamina/fork res-chan)
                         #(log/to :peer "peer-query result: " %))
     (if timeout
       (:result (lamina/wait-for-message res-chan timeout))

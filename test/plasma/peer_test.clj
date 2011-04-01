@@ -9,12 +9,12 @@
             [lamina.core :as lamina]
             [plasma.query :as q]))
 
-(log/file :peer "peer.log")
-(log/repl :peer)
+;(log/file :peer "peer.log")
+;(log/repl :peer)
 
 (deftest ping-test
   (let [p (peer "db/p1" {:port 1234})
-        manager (:manager peer)]
+        manager (:manager p)]
     (try
       (let [client (get-connection manager (plasma-url "localhost" 1234))]
         (dotimes [i 20]
@@ -78,7 +78,7 @@
                                     (plasma-url "localhost" (inc port))))
             link (with-graph (:graph local)
                    (edge net peer-proxy :label :peer))]
-        
+
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
         (let [q (-> (q/path [synth [:net :peer :music :synths :synth]])
@@ -86,7 +86,7 @@
               res (query local q)]
           (is (= #{:kick :bass :snare :hat}
                  (set (map :label res))))
-          (println "res: " res)))
+          (comment println "res: " res)))
       (finally
         (close local)
         (close remote)
@@ -107,7 +107,9 @@
         peers (doall
                 (map
                   (fn [n]
-                    (let [p (peer (:manager local) (str "db/peer-" n) {:port (+ port n 1)})]
+                    (let [p (peer (str "db/peer-" n)
+                                  {:port (+ port n 1)
+                                   :manager (:manager local)})]
                       (with-graph (:graph p)
                         (clear-graph)
                         (let [root-id (root-node)]
@@ -165,14 +167,14 @@
 (deftest iter-n-test
   (let [local (peer "db/p1")]
     (try
-      (let [end-id (with-graph 
+      (let [end-id (with-graph
                      (:graph local)
                      (clear-graph)
                      (let [root-id (root-node)]
                        (log/to :peer "root-id: " root-id)
                        (node-chain root-id 10 :foo)))
             res-chan (iter-n-query local 10 (q/path [:foo]))]
-          (is (= end-id 
+          (is (= end-id
                  (first (lamina/channel-seq res-chan 200)))))
       (finally
         (close local)))))
