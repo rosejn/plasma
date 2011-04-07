@@ -17,7 +17,7 @@
     "Lookup a node by UUID.")
 
   (query
-    [this q] [this q params]
+    [this q] [this q params] [this q params timeout]
     "Issue a query against the peer's graph.")
 
   (query-channel
@@ -36,8 +36,30 @@
 
   (iter-n-query
     [this iq] [this n q] [this n q params]
-    "Execute a query recursively, where the output of one iteration is
-    used as the input to the next for count iterations."))
+    "Execute a query iteratively, n times. The output of one execution is
+    used as the input to the iteration."))
+
+; Add support for specifying the binding variable name, rather than
+; only using the ROOT-ID.
+
+(comment
+  query-iter-n
+  query-iter-until
+  query-iter-while
+  query-recur-n
+  query-recur-until
+  query-recur-while
+
+  (iter-until-query
+    [this q] [this pred q] [this pred q params]
+  "Execute a query iteratively until the p")
+
+  (recur-n-query
+    [this iq] [this n q] [this n q params])
+
+  (recur-until-query
+    [this q] [this pred q] [this pred q params]))
+
 
 (def *manager* nil)
 (def DEFAULT-HTL 50)
@@ -46,7 +68,9 @@
   [manager graph port listener options] ; peer-id, port, max-peers
 
   IQueryable
-  (ping [_] :pong)
+  (ping [_] 
+        (log/to :peer "got ping...")
+        :pong)
 
   (node-by-uuid
     [this id]
@@ -62,6 +86,12 @@
     (binding [*manager* manager]
       (with-graph graph
                   (q/query plan params))))
+
+  (query
+    [this plan params timeout]
+    (binding [*manager* manager]
+      (with-graph graph
+                  (q/query plan params timeout))))
 
   (query-channel
     [this plan]
@@ -167,6 +197,11 @@
        (iter-fn q)
        final-res))
 
+  IConnectionListener
+  (on-connect
+    [this handler]
+    (on-connect listener handler))
+
   IClosable
   (close
     [this]
@@ -174,6 +209,7 @@
     (if (:internal-manager options)
       (clear-connections manager))))
 
+; TODO: FIX ME.  register-connection needs a channel and a url
 (defn- setup-presence-listener
   [p]
   (lamina/receive-all (presence-listener)
@@ -182,14 +218,18 @@
 
 (defn- request-handler
   [peer [ch req]]
-  (log/to :peer "rpc-request: " (:id req))
+  (log/format :peer "request-handler[%s]: %s" (:id req) (:method req))
   (try
     (let [res (case (:method req)
                 'ping (ping peer)
                 'node-by-uuid (node-by-uuid peer (first (:params req)))
-                'query (query peer (first (:params req))))]
-      ;(log/to :peer "result: " res)
-      (lamina/enqueue ch (rpc-response req res)))
+                'query (query peer (first (:params req))))
+          res (if (seq? res)
+                (doall res)
+                res)
+          rpc-res (rpc-response req res)]
+      ;(log/to :peer "result: " rpc-res)
+      (lamina/enqueue ch rpc-res))
     (catch Exception e
       (log/to :peer "error handling request!\n------------------\n"
               (with-out-str (print-cause-trace e)))
@@ -208,8 +248,13 @@
               "-------------------------------\n"
               (with-out-str (print-cause-trace e))))))
 
-(defn- setup-peer-connection-handlers
+(defn handle-peer-connection
+  "Hook a connection up to a peer so that it can receive queries."
   [peer con]
+  (log/to :peer "handle-peer-connection new-connection: " (:url con))
+  (register-connection (:manager peer) con)
+  (lamina/receive-all (lamina/filter* #(not (nil? %)) (:chan con))
+    (fn [msg] (log/to :peer "incoming request: " msg)))
   (lamina/receive-all (request-channel con)
                       (partial request-handler peer))
   (lamina/receive-all (stream-channel con)
@@ -228,8 +273,7 @@
          g (graph path)
          listener (connection-listener manager port)
          p (PlasmaPeer. manager g port listener options)]
-     (on-connect listener (partial setup-peer-connection-handlers p))
-
+     (on-connect p (partial handle-peer-connection p))
      (when (:presence options)
        (setup-presence-listener p))
      p)))
@@ -260,179 +304,12 @@
   [con q]
   (stream con 'sub-query [q]))
 
+(defn peer-ping
+  [con & [timeout]]
+  (lamina/wait-for-message (request con 'ping nil) 
+                           (or timeout 2000)))
+
 (defmethod peer-sender "plasma"
   [url]
   (partial peer-sub-query (get-connection *manager* url)))
 
-(comment
-
-(defn peer-dispatch [peer ch req]
-  (when req
-    (log/to :peer "[peer-dispatch] req-id: " (:id req))
-    (let [id (:id req)
-          msg (:body req)]
-      (try
-        (let [graph (:graph peer)
-              response
-              (cond
-                (= ROOT-ID msg)
-                (with-graph graph (root-node))
-
-                (uuid? msg)
-                (with-graph graph (find-node msg))
-
-                (= :ping msg)
-                :pong
-
-                (= :query (:type msg))
-                (do
-                  (log/to :peer "[peer-handler] query")
-                  (enqueue (:on-query peer) {:chan ch
-                                             :query msg
-                                             :client-info client-info})
-                  (with-graph graph (query msg)))
-
-                (= :sub-query (:type msg))
-                (do
-                  (log/to :peer "[peer-handler] sub-query")
-                  (with-graph graph (sub-query ch msg))))]
-
-          (let [res {:type :response :id id :body response}]
-            (log/to :peer "[peer-dispatch] response: " res)
-            (unless (= :sub-query (:type msg))
-                    (enqueue ch res))))
-        (catch Exception e
-          (log/to :peer "server error")
-          (log/to :peer "------------")
-          (log/to :peer "req from " client-info ": " req)
-          (log/to :peer "caused exception: " e (.printStackTrace e)))))))
-
-(defn- register-peer-connection
-  "Connect to local peer and ping hello."
-  [host port])
-
-(defn- peer-server
-  "Listen on port, responding to queries against the peer graph."
-  [peer]
-  (log/to :peer "[peer-server] starting on port: " (:port peer))
-  (let [s (start-object-server
-            (fn [chan client-info]
-              (log/to :peer "[peer-server] new client: " client-info)
-              (enqueue (:on-connect peer)
-                       (register-connection chan client-info))
-              (receive-all chan (partial peer-dispatch peer chan)))
-            {:port (:port peer)})]
-    (reset! (:server peer) s)))
-
-(defn- get-peer-connection
-  [peer]
-  (if (= :local-peer (:type peer))
-    (throw (Exception. "Cannot open a connection to a local peer.")))
-  (wait-for-result (:connection peer) 2000))
-
-(defn- init-peer-graph
-  []
-  (when-not (:edges (find-node (root-node)))
-    (let [net  (node :label :net)]
-      (edge (root-node) net :label :net))))
-
-;(log/to :peer "[peer] path:" path " port:" port)
-
-
-
-(defn on-peer-connect
-  "Returns an event channel of new peer connections."
-  [p]
-  (fork (:on-connect p)))
-
-(defn on-peer-query
-  "Returns an event channel of incoming query events.
-  The event is a map containing a channel to the remote peer, the query,
-  and the client information for the remote peer.
-    {:chan ch
-    :query msg
-    :client-info client-info}
-  "
-  [p]
-  (fork (:on-query p)))
-
-; * use Upnp library to figure out public port and IP to create own URL
-; * check-live-peers: ping all peers and drop ones that don't respond
-
-; DataChannel
-; Use to send audio, video, events, etc...
-; - provides a generic object communication pipe
-; - support encryption
-; - support nat traversal and routing through a 3rd party
-; -
-; request a named channel with some args
-; on-named-channel request handler
-;
-
-(defprotocol DHTClient
-  (close []) ; leave?
-  (put [obj])
-  (get [obj])
-  (delete [obj]))
-
-; join (part of construction, or part of protocol?)
-; (getSuccessor [id])
-
-(defprotocol RandomWalkClient
-  (find [key])
-  (sample-query [query]))
-
-; peer connection protocol to talk to remote peer
-; id (name?): return the peer-id
-; query: run a query
-; get-node: return a node (or some properties) given a UUID
-; get-peers: return all peers
-
-; group communication
-; join
-; leave
-; send-message
-; on-message-received
-
-; Example apps
-;
-; * text based chat (or maybe with basic swing gui)
-(defprotocol ChatClient
-  (onMessage [])
-  (sendMessage []))
-
-; * simple work queue system, where jobs can be added to a server and it forwards them to
-; available client workers
-
-
-; Buddy Service
-; * looks up buddies on join, and then periodically pings them to monitor their status
-; * allows for querying and opening channels to friends
-; * store buddy info in local graph (proxy nodes)
-(defprotocol ContactClient
-  (onArrival [])
-  (onDeparture [])
-  (info [])
-  (query [])
-  (channel []))
-
-; Distributed drawing or click command
-; * simple P2P app where the user on one side clicks on the screen and the peers
-; see dots or lines or something
-
-; Given an arbitrary name return back the peer connection info
-(defprotocol NamingService    ; NamingClient?
-  (resolve [name]))
-
-; Local network broadcaster (using UDP)
-; - periodically broadcast a simple presence message with local peer connection info
-; - listener gets called whenever a UDP packet arrives
-;
-
-; Gossip based updates of ??? document, peer list, named groups, service info?
-; - gossip based publication of arbitrary object, or key/value pair?
-
-
-; Super simple jSpeex audio streaming on top of Plasma
-;
-)

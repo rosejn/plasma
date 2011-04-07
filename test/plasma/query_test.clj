@@ -50,6 +50,16 @@
     (is (= #{:kick :bass :snare :hat}
            (set (map :label (query q)))))))
 
+(deftest limit-test
+  (let [q (limit (path [synth [:music :synths :synth]])
+                 2)]
+    (is (= 2 (count (query q))))))
+
+(deftest choose-test
+  (let [q (choose (path [synth [:music :synths :synth]])
+                 2)]
+    (is (= 2 (count (query q))))))
+
 (defn append-send-node
   [plan]
   (let [{:keys [ops root]} plan

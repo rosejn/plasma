@@ -1,3 +1,22 @@
+* new peer connections should always send their URL as the first message so they
+  can be correctly stored in the connection cache, otherwise we just have the
+  outgoing port number...
+
+* when a connection is closed (or fails) remotely we need to close it and remove
+ it from the connection cache.
+
+* create a link query type to connect one or more nodes
+
+(query (link src edge tgt))
+
+(link ROOT-ID {:label :foo} {:name "TJ Watsom"})
+(link ROOT-ID :foo {:name "TJ Watsom"})
+(link (path [:a :b :c]) :foo {:name "TJ Watsom"})
+
+* get-connection from a peer to get a connection that has been extended to
+support query functions.  This way we can call query, or sub-query, etc... on
+either a peer or a connection.
+
 * Add various error handling tests for connections and peer operations, and
 look at moving some of the code to pipelines.
 
@@ -5,6 +24,7 @@ look at moving some of the code to pipelines.
 have some other helpers for getting the results and supporting a timeout
 
 ------------
+
 Supporting experiments:
 
 * insertion

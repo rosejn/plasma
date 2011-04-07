@@ -6,6 +6,7 @@
   the reply using the same id to correlate the response (or error) with the
   request."
   [id method params]
+  (log/to :rpc "rpc-request[" id "]: " method params)
   {:type :request
    :id id
    :method method
@@ -14,6 +15,10 @@
 (defn rpc-response
   "An RPC response matched to a request."
   [req val]
+  (log/to :rpc "rpc-response[" (:id req)"]: " 
+          (if (seq? val)
+            (take 5 (seq val))
+            val))
   {:type :response
    :id (:id req)
    :result val})
@@ -21,6 +26,7 @@
 (defn rpc-event
   "An RPC event is a one-shot message that doesn't expect a response."
   [id params]
+  (log/to :rpc "rpc-error[" id "]: " params)
   {:type :event
    :id id
    :params params})

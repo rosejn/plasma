@@ -1,8 +1,8 @@
 (ns test-utils
-  (:use [plasma core operator]
+  (:use [plasma core operator connection]
         [clojure test stacktrace]
-        [lamina core]
-        [jiraph graph]))
+        [jiraph graph])
+  (:require [lamina.core :as lamina]))
 
 (def G (graph "test/db"))
 
@@ -38,3 +38,9 @@
     (clear-graph)
     (test-graph)
     (f)))
+
+(defn close-peers
+  [peers]
+  (doseq [p peers]
+    (close p)))
+

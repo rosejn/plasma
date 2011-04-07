@@ -169,19 +169,23 @@
       plan
       flat-preds)))
 
+(defn- append-root-op
+  [{ops :ops :as plan} {id :id :as op}]
+  (log/to :query "append-root-op: " plan op)
+  (assoc plan
+         :root id
+         :ops (assoc ops id op)))
+
 (defn- load-props
   "Add a property loading operator to the query plan to add property
   values to the run-time path-map for downstream operators to utilize.
   This is how, for example, select operators can access property values."
-  [plan bind-sym properties]
+  [{root :root :as plan} bind-sym properties]
   (let [bind-op (get (:pbind plan) bind-sym)
-        root-op (:root plan)
         prop-op (plan-op :property
-                         :deps [root-op]
+                         :deps [root]
                          :args [bind-op properties])]
-    (assoc plan
-           :root (:id prop-op)
-           :ops (assoc (:ops plan) (:id prop-op) prop-op))))
+    (append-root-op plan prop-op)))
 
 (defn project
   "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
@@ -207,9 +211,19 @@
         proj-op (plan-op :project
                          :deps [root-op]
                          :args [bind-op props?])]
-    (assoc plan
-           :root (:id proj-op)
-           :ops (assoc (:ops plan) (:id proj-op) proj-op))))
+    (append-root-op plan proj-op)))
+
+(defn choose
+  [{root :root :as plan} n]
+  (append-root-op plan (plan-op :choose
+                                :deps [root]
+                                :args [n])))
+
+(defn limit
+  [{root :root :as plan} n]
+  (append-root-op plan (plan-op :limit
+                                :deps [root]
+                                :args [n])))
 
 (defn parameterized
   "Add the parameter map for a query."
@@ -226,12 +240,8 @@
 (defn- plan-receiver
   "Add a receive operator to the root of the query plan."
   [plan]
-  (let [op (plan-op :receive
-                    :deps [(:root plan)])
-        ops (assoc (:ops plan) (:id op) op)]
-    (assoc plan
-           :ops ops
-           :root (:id op))))
+  (append-root-op plan (plan-op :receive
+                                :deps [(:root plan)])))
 
 (defn path*
   "Helper function to 'parse' a path expression and generate an initial
@@ -390,24 +400,10 @@
       :parameter
       (apply op-fn id args)
 
-      :project
-      (apply op-fn id (first deps-ops) args)
-
-      :aggregate
-      (apply op-fn id (first deps-ops) args)
-
       :receive
       (op-fn id (first deps-ops) recv-chan)
 
-      :send
-      (apply op-fn id (first deps-ops) args)
-
-      :select
-      (apply op-fn id (first deps-ops) args)
-
-      :property
-      (apply op-fn id (first deps-ops) args)
-      )))
+      (apply op-fn id (first deps-ops) args))))
 
 (defn- op-dep-list
   "Returns a sorted operator dependency list. (Starting at the leaves of the tree
@@ -491,12 +487,12 @@
   [tree & [timeout]]
   (let [chan (get-in (:ops tree) [(:root tree) :out])
         timeout (or timeout 1000)]
-    (channel-seq chan timeout)))
+    (lazy-channel-seq chan timeout)))
 
 (defn query-result-seq
   [chan & [timeout]]
   (let [timeout (or timeout 1000)]
-    (channel-seq chan timeout)))
+    (lazy-channel-seq chan timeout)))
 
 (defn query-channel
   "Issue a query to the currently bound graph, and return a channel
@@ -511,12 +507,17 @@
     (run-query tree param-map)
     res-chan))
 
+; 5 second maximum query time before timing out
+(def MAX-QUERY-TIME (* 5 1000))
+
 (defn query
   "Issue a query to the currently bound graph."
   ([plan]
-   (doall (query-result-seq (query-channel plan))))
-  ([plan param-map]
-   (doall (query-result-seq (query-channel plan param-map)))))
+   (query plan {}))
+  ([plan param-map & [timeout]]
+   (query-result-seq (query-channel plan param-map) 
+                            (or timeout
+                                MAX-QUERY-TIME))))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."

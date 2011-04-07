@@ -18,9 +18,6 @@
   (fn [url]
     (:proto (url-map url))))
 
-(defn clear-graph []
-  (truncate!))
-
 (defn node
   "Create a node in the current graph that contains the given key-value pairs. If a UUID string is passed as the first argument then it will be used for the new node, otherwise a new one will be generated."
   [& key-vals]
@@ -56,8 +53,8 @@ For example:\n\t(with-graph G (find-node id))\n")))
              :type :node))))
 
 (defn- init-new-graph
-  []
-  (let [root (node :label :root)
+  [root-id]
+  (let [root (node root-id :label :root)
         meta (node (config :meta-id) :root root)]
     {:root root}))
 
@@ -69,8 +66,13 @@ For example:\n\t(with-graph G (find-node id))\n")))
       (let [meta (find-node (config :meta-id))
             meta (if meta
                    meta
-                   (init-new-graph))]
+                   (init-new-graph (uuid)))]
         (with-meta g meta)))))
+
+(defn clear-graph 
+  []
+  (truncate!)
+  (init-new-graph (:root (meta *graph*))))
 
 (defn proxy-node
   "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."

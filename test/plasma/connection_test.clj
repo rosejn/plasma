@@ -13,7 +13,7 @@
   (request [c m p])
   (request-channel [_])
   (send-event [c id p])
-  (event-channel [c]) 
+  (event-channel [c])
   (event-channel [c id])
   (stream [c m p])
   (stream-channel [c])

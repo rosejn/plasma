@@ -30,18 +30,22 @@
 
   (event-channel
     [con] [con id]
-    "Returns a channel for incoming events.  If an ID is passed only incoming 
+    "Returns a channel for incoming events.  If an ID is passed only incoming
     events with this ID will be enqueued onto the returned channel.")
 
   (stream
     [con method params]
-    "Open a stream channel on this connection.  Returns a channel that can be 
+    "Open a stream channel on this connection.  Returns a channel that can be
     used bi-directionally.")
 
   (stream-channel
     [con]
     "Returns a channel for incoming stream requests.  The channel will receive
-    [ch request] pairs, and the ch can be used as a named bi-direction stream."))
+    [ch request] pairs, and the ch can be used as a named bi-direction stream.")
+  
+  (on-closed
+    [con handler]
+    "Register a handler to be called when this connection is closed."))
 
 (defn- type-channel
   "Returns a channel of incoming messages on chan of only the given type."
@@ -127,6 +131,10 @@
                    [(wrapped-stream-channel chan (:id s-req)) s-req])
                  (type-channel chan :stream-request)))
 
+  (on-closed
+    [this handler]
+    (lamina/on-closed chan handler))
+
   IClosable
   (close
     [this]
@@ -134,15 +142,13 @@
 
 (defn- make-connection
   "Returns a *new* connection to the peer listening at URL."
-  ([url]
-   (let [{:keys [proto host port]} (url-map url)
-         client (object-client {:host host :port port})
-         chan   (lamina/wait-for-result client *connection-timeout*)]
-     ;(lamina/receive-all (type-channel chan :response)
-     ;                    #(log/to :con "client msg: " %))
-     (Connection. url chan)))
-  ([ch {:keys [remote-addr]}]
-   (Connection. (str "plasma://" remote-addr) ch)))
+  [url]
+  (let [{:keys [proto host port]} (url-map url)
+        client (object-client {:host host :port port})
+        chan   (lamina/wait-for-result client *connection-timeout*)]
+    ;(lamina/receive-all (type-channel chan :response)
+    ;                    #(log/to :con "client msg: " %))
+    (Connection. url chan)))
 
 
 (defprotocol IConnectionCache
@@ -154,10 +160,10 @@
     connection when available.")
 
   (register-connection
-    [this ch url]
+    [this con] [this ch url]
     "Add a new connection to the cache that will use an existing channel and
     URL.  Used to register connections initiated remotely.
-    Returns a Connection.")
+    Returns the Connection.")
 
   (refresh-connection
     [this con]
@@ -169,6 +175,10 @@
     "Apply the cache policy to the current set of connections, possibly
     removing old or unused connections to make space for new ones.  This is
     called automatically so it should normally not need to be called manually.")
+
+  (remove-connection
+    [this con]
+    "Remove a connection from the cache.")
 
   (clear-connections
     [this]
@@ -185,25 +195,38 @@
 
   (get-connection
     [this url]
-    (let [con (or (get @connections* url)
-                  (make-connection url))]
+    (let [con-entry (get @connections* url)
+          con (if con-entry
+                (:con con-entry)
+                (make-connection url))]
       (refresh-connection this con)))
 
+  (remove-connection
+    [this con]
+    (swap! connections* dissoc (:url con)))
+
   (register-connection
-    [this ch client-info]
-    (refresh-connection this (make-connection ch client-info)))
+    [this con]
+    (log/to :con "register-connection: " (:url con))
+    (refresh-connection this con)
+    (on-closed con #(remove-connection this con))
+    con)
+
+  (register-connection
+    [this url ch]
+    (register-connection this (Connection. url ch)))
 
   (refresh-connection
     [this con]
-    (let [con (assoc con :last-used (current-time))]
-      (swap! connections* assoc (:url con) con)
-      (when (>= (connection-count this) (config :connection-cache-limit))
-        (purge-connections this))
-      con))
+    (swap! connections* 
+           assoc (:url con) {:last-used (current-time) :con con})
+    (when (>= (connection-count this) (config :connection-cache-limit))
+      (purge-connections this))
+    con)
 
   (clear-connections
     [this]
-    (doseq [con (vals @connections*)]
+    (doseq [con (map :con (vals @connections*))]
       (close con))
     (reset! connections* {}))
 
@@ -215,9 +238,9 @@
       (swap! connections*
              (fn [conn-map]
                (let [[to-keep to-drop] (flush-fn (vals conn-map) n-to-drop)]
-                 (doseq [con to-drop]
-                   (close con))
-                 (zipmap (map :url to-keep) to-keep))))))
+                 (doseq [con-entry to-drop]
+                   (close (:con con-entry)))
+                 (zipmap (map #(:url (:con %)) to-keep) to-keep))))))
 
   (connection-count
     [this]
@@ -252,9 +275,7 @@
   IConnectionListener
   (on-connect
     [this handler]
-    (lamina/receive-all 
-      (lamina/filter* #(not (nil? %)) chan) 
-      handler))
+    (lamina/receive-all chan #(when % (handler %))))
 
   IClosable
   (close
@@ -268,9 +289,11 @@
   (let [connect-chan (lamina/channel)
         s (start-object-server
             (fn [chan client-info]
-              ;(log/to :con "connection: " client-info)
-              (let [con (register-connection manager chan client-info)]
+              (let [addr (:remote-addr client-info)
+                    url (plasma-url (.getHostName addr) (.getPort addr))
+                    con (register-connection manager url chan)]
+                (log/to :con "listener new connection: " url con)
                 (lamina/enqueue connect-chan con)))
             {:port port})]
-    (ConnectionListener. s port connect-chan)))
+    (ConnectionListener. s port (lamina/filter* #(not (nil? %)) connect-chan))))
 
