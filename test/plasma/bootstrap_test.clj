@@ -8,7 +8,7 @@
             [lamina.core :as lamina]
             [plasma.query :as q]))
 
-(log/file [:peer :bootstrap :con] "peer.log")
+;(log/file [:peer :bootstrap :con] "peer.log")
 
 (defn make-peers
   "Create n peers, each with a monotically increasing port number.
@@ -41,11 +41,14 @@
           (do
             (Thread/sleep 200)
             (bootstrap p strap-url))))
-      (Thread/sleep 300)
+      (Thread/sleep BOOTSTRAP-RETRY-PERIOD)
       (is (= n-peers (count (query strapper (q/path [:net :peer])
                                    200))))
-      (is (= N-BOOTSTRAP-PEERS (count (query (last peers) (q/path [:net :peer])
-                                             200))))
+      (is (every?
+            (fn [p]
+              (= N-BOOTSTRAP-PEERS 
+                 (first (query p (q/count* (q/path [:net :peer])) 200))))
+            peers))
       (finally
         (close strapper)
         (close-peers peers)))))

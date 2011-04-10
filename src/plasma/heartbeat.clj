@@ -15,7 +15,6 @@
     (swap! heartbeats* (fn [beats]
                          (update-in beats [id] #(conj % ts))))))
 
-
 ; TODO: abstract this pattern, also used in bootstrap
 (defn- heartbeat-connect-handler
   [peer con]
@@ -47,7 +46,7 @@
       (try
         (do-heartbeat peer n-query)
         (catch Exception e
-          (log/to :heartbeat "Error in heartbeat: " e "\n" 
+          (log/to :heartbeat "Error in heartbeat: " e "\n"
                   (with-out-str (.printStackTrace e))))))))
 
-(defn 
+(defn

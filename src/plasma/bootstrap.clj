@@ -54,17 +54,23 @@
      p)))
 
 (def N-BOOTSTRAP-PEERS 5)
+(def BOOTSTRAP-RETRY-PERIOD 2000)
 
 (defn add-bootstrap-peers
-  [p con]
+  [p con n]
   (let [new-peers (peer-query con (-> (q/path [peer [:net :peer]])
-                                  (q/choose N-BOOTSTRAP-PEERS)
+                                  (q/choose n)
                                   (q/project 'peer [:proxy :id]))
                               2000)]
     (with-graph (:graph p)
       (let [net (net-root)]
         (doseq [{url :proxy id :id} new-peers]
-          (edge net (proxy-node id url) :label :peer))))))
+          (edge net (proxy-node id url) :label :peer)))))
+  (let [n-peers (first (query p (q/count*
+                                  (q/path [:net :peer]))))]
+    (when (< n-peers N-BOOTSTRAP-PEERS)
+      (schedule BOOTSTRAP-RETRY-PERIOD
+                #(add-bootstrap-peers p con (- N-BOOTSTRAP-PEERS n-peers))))))
 
 (defn- advertise
   [con root-id url]
@@ -72,11 +78,11 @@
 
 (defn bootstrap
   [peer boot-url]
-  (let [con (get-connection (:manager peer) boot-url)
+  (let [booter (get-connection (:manager peer) boot-url)
         root-id (with-graph (:graph peer) (root-node))
         my-url (public-url (:port peer))]
-    (advertise con root-id my-url)
-    (handle-peer-connection peer con)
-    (add-bootstrap-peers peer con)))
+    (advertise booter root-id my-url)
+    (handle-peer-connection peer booter)
+    (add-bootstrap-peers peer booter N-BOOTSTRAP-PEERS)))
 
 

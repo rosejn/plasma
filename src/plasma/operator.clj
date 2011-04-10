@@ -272,7 +272,6 @@
     (on-closed left-out
       (fn []
         (let [aggregated (agg-fn (channel-seq buf))]
-          (log/to :op "[aggregate] count: " (count aggregated))
           (doseq [item aggregated]
             (enqueue out item)))
         (close out)))
@@ -446,6 +445,12 @@
   (let [choose-fn (fn [arg-seq]
                     (take n (shuffle arg-seq)))]
     (aggregate-op id left choose-fn)))
+
+(defn count-op
+  "Outputs the total count of its aggregated input."
+  [id left]
+  (let [count-fn (fn [arg-seq] [(count arg-seq)])]
+    (aggregate-op id left count-fn)))
 
 (comment defn recurse-op
   "Recursively executes a query, where the output of one iteration is fed as

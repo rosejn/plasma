@@ -37,7 +37,7 @@
 
 (defn periodically
   "Executes a function every period milliseconds.  Returns a function that can
-  be called to terminate the execution.  If true is passed as the argument to 
+  be called to terminate the execution.  If true is passed as the argument to
   this function it will terminate immediately rather than waiting for the
   already scheduled tasks to complete."
   [period fun]
@@ -48,3 +48,11 @@
         (.shutdownNow s)
         (.shutdown s)))))
 
+(defn schedule
+  "Schedule a function to run after ms milliseconds.  Returns a function that can
+  be called to cancel the scheduled execution."
+  [ms fun]
+  (let [s (Executors/newSingleThreadScheduledExecutor)]
+    (.schedule s fun (long ms) TimeUnit/MILLISECONDS)
+    (fn []
+        (.shutdownNow s))))

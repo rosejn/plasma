@@ -213,6 +213,14 @@
                          :args [bind-op props?])]
     (append-root-op plan proj-op)))
 
+(defn count*
+  [{root :root :as plan}]
+  (append-root-op plan 
+                  (assoc (plan-op :count
+                                  :deps [root]
+                                  :args [])
+                         :numerical? true)))
+
 (defn choose
   [{root :root :as plan} n]
   (append-root-op plan (plan-op :choose
@@ -453,11 +461,18 @@
     true
     false))
 
+(defn- root-op
+  "Returns the root operator for a query plan."
+  [p]
+  (get (:ops p) (:root p)))
+
 (defn with-result-project
-  "If an explicit projection has not been added to the query plan
-  then by default we project on the final element of the path query."
+  "If an explicit projection has not been added to the query plan and the 
+  root operator outputs path maps then by default we project on the final 
+  element of the path query."
   [plan]
-  (if (has-projection? plan)
+  (if (or (has-projection? plan)
+          (:numerical? (root-op plan)))
     plan
     (let [bind-sym (if (= 1 (count (:pbind plan)))
                      (ffirst (:pbind plan))
@@ -515,7 +530,7 @@
   ([plan]
    (query plan {}))
   ([plan param-map & [timeout]]
-   (query-result-seq (query-channel plan param-map) 
+   (query-result-seq (query-channel plan param-map)
                             (or timeout
                                 MAX-QUERY-TIME))))
 

@@ -50,6 +50,11 @@
     (is (= #{:kick :bass :snare :hat}
            (set (map :label (query q)))))))
 
+(deftest count-test
+  (let [q (count* (limit (path [synth [:music :synths :synth]])
+                 2))]
+    (is (= 2 (first (query q))))))
+
 (deftest limit-test
   (let [q (limit (path [synth [:music :synths :synth]])
                  2)]
