@@ -46,7 +46,7 @@
                   (where (>= (:score synth) 0.6)))
               lres (query local q {} 100)
               res (peer-query con q 100)
-              chan-res (take 2 
+              chan-res (take 2
                              (lamina/lazy-channel-seq
                                (query-channel local q) 100))]
           (is (= lres res chan-res))
@@ -77,7 +77,7 @@
                         (proxy-node (:id remote-root)
                                     (plasma-url "localhost" (inc port))))
             link (with-graph (:graph local)
-                   (edge net peer-proxy :label :peer))]
+                   (make-edge net peer-proxy :label :peer))]
 
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
@@ -114,21 +114,21 @@
                                         a {:label (str "a-" n) :score 0.1}
                                         b {:label (str "b-" n) :score 0.5}
                                         c {:label (str "c-" n) :score 0.9}]
-                            (edge root-id net :label :net)
-                            (edge root-id docs :label :docs)
-                            (edge docs a :label :doc)
-                            (edge docs b :label :doc)
-                            (edge docs c :label :doc))
+                            (make-edge root-id net :label :net)
+                            (make-edge root-id docs :label :docs)
+                            (make-edge docs a :label :doc)
+                            (make-edge docs b :label :doc)
+                            (make-edge docs c :label :doc))
                           [p root-id n]))))
                   (range n-peers)))]
     (try
       (with-graph (:graph local)
         (clear-graph)
         (let [root-id (root-node)
-              net (node :label :net)]
-          (edge root-id net :label :net)
+              net (make-node :label :net)]
+          (make-edge root-id net :label :net)
           (doseq [[p peer-root n] peers]
-            (edge net
+            (make-edge net
                   (proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
                   :label :peer))
          ; (println "peers: " (query (path [:net :peer])))
@@ -151,8 +151,8 @@
   (let [chain-ids (doall
                     (take (inc n) (iterate
                               (fn [src-id]
-                                (let [n (node)]
-                                  (edge src-id n :label label)
+                                (let [n (make-node)]
+                                  (make-edge src-id n :label label)
                                   n))
                               src)))]
     (log/to :peer "----------------------\n"
@@ -185,7 +185,7 @@
           (close con)))
       ;(println "connected: " @connected)
       (is (= 10 (count @connected)))
-      (finally 
+      (finally
         (close local)))))
 
 (deftest connection-handler-test
@@ -194,11 +194,11 @@
         res (atom [])]
     (try
       (on-connect (:listener p2) (fn [incoming]
-                                   (future 
+                                   (future
                                      (let [root (peer-node incoming ROOT-ID 100)]
                                        (swap! res #(conj % [1 (:id root)]))))))
       (on-connect (:listener p2) (fn [incoming]
-                                   (future 
+                                   (future
                                      (let [root (peer-node incoming ROOT-ID 100)]
                                        (swap! res #(conj % [2 (:id root)]))))))
       (let [con (get-connection (connection-manager) (plasma-url "localhost" 3333))]
@@ -208,7 +208,7 @@
               sres (sort-by first @res)]
           (is (= [1 id] (first sres)))
           (is (= [2 id] (second sres)))))
-        (finally 
+        (finally
           (close p1)
           (close p2)))))
 

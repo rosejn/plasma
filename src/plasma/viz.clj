@@ -9,7 +9,7 @@
 
 (defn- tree-vecs* [q root]
   (let [{:keys [id type deps args]} (get (:ops q) root)
-        label (case (:type node)
+        label (case (:type root)
                 :traverse (str "tr " (second args))
                 :parameter (str "pr \"" (first args) "\"")
                 (name type))

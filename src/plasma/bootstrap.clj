@@ -10,7 +10,7 @@
   (with-graph g
     (clear-graph)
     (let [root (root-node)]
-      (edge root (node) :label :net))))
+      (make-edge root (make-node) :label :net))))
 
 (defn- peer-urls
   []
@@ -28,7 +28,7 @@
 (defn- add-peer
   [id url]
   (log/to :bootstrap "add-peer: " id url)
-  (edge (net-root) (proxy-node id url) :label :peer))
+  (make-edge (net-root) (proxy-node id url) :label :peer))
 
 (defn- advertise-handler
   [peer con event]
@@ -65,7 +65,7 @@
     (with-graph (:graph p)
       (let [net (net-root)]
         (doseq [{url :proxy id :id} new-peers]
-          (edge net (proxy-node id url) :label :peer)))))
+          (make-edge net (proxy-node id url) :label :peer)))))
   (let [n-peers (first (query p (q/count*
                                   (q/path [:net :peer]))))]
     (when (< n-peers N-BOOTSTRAP-PEERS)

@@ -17,21 +17,21 @@
                   sessions :sessions
                   take-six :take-six
                   red-pill :red-pill]
-                 (edge root-id (node :label :net) :label :net)
-                 (edge root-id music :label :music)
-                 (edge music synths :label :synths)
-                 (edge synths bass :label :synth)
-                 (edge synths hat  :label :synth)
-                 (edge synths kick :label :synth)
-                 (edge synths snare :label :synth)
-                 (edge root-id sessions :label :sessions)
-                 (edge sessions take-six :label :session)
-                 (edge take-six kick :label :synth)
-                 (edge take-six bass :label :synth)
-                 (edge sessions red-pill :label :session)
-                 (edge red-pill hat   :label :synth)
-                 (edge red-pill snare :label :synth)
-                 (edge red-pill kick  :label :synth))))
+                 (make-edge root-id (make-node :label :net) :label :net)
+                 (make-edge root-id music :label :music)
+                 (make-edge music synths :label :synths)
+                 (make-edge synths bass :label :synth)
+                 (make-edge synths hat  :label :synth)
+                 (make-edge synths kick :label :synth)
+                 (make-edge synths snare :label :synth)
+                 (make-edge root-id sessions :label :sessions)
+                 (make-edge sessions take-six :label :session)
+                 (make-edge take-six kick :label :synth)
+                 (make-edge take-six bass :label :synth)
+                 (make-edge sessions red-pill :label :session)
+                 (make-edge red-pill hat   :label :synth)
+                 (make-edge red-pill snare :label :synth)
+                 (make-edge red-pill kick  :label :synth))))
 
 (defn test-fixture [f]
   (with-graph G

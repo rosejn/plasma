@@ -49,4 +49,3 @@
           (log/to :heartbeat "Error in heartbeat: " e "\n"
                   (with-out-str (.printStackTrace e))))))))
 
-(defn
