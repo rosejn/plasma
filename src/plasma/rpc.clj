@@ -15,7 +15,7 @@
 (defn rpc-response
   "An RPC response matched to a request."
   [req val]
-  (log/to :rpc "rpc-response[" (:id req)"]: " 
+  (log/to :rpc "rpc-response[" (:id req)"]: "
           (if (seq? val)
             (take 5 (seq val))
             val))

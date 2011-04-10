@@ -8,6 +8,8 @@
             [lamina.core :as lamina]
             [plasma.query :as q]))
 
+(log/file [:peer :bootstrap :con] "peer.log")
+
 (defn make-peers
   "Create n peers, each with a monotically increasing port number.
   Then run (fun i) with the peer graph bound to initialize each peer,
@@ -25,7 +27,7 @@
   (let [port (+ 5000 (rand-int 5000))
         strapper (bootstrap-peer "db/strapper" {:port port})
         strap-url (plasma-url "localhost" port)
-        n-peers 2
+        n-peers 10
         peers (make-peers n-peers (inc port)
                 (fn [i]
                   (clear-graph)
@@ -36,15 +38,19 @@
     (try
       (doall
         (for [p peers]
-          (bootstrap p strap-url)))
+          (do
+            (Thread/sleep 200)
+            (bootstrap p strap-url))))
       (Thread/sleep 300)
       (is (= n-peers (count (query strapper (q/path [:net :peer])
                                    200))))
+      (is (= N-BOOTSTRAP-PEERS (count (query (last peers) (q/path [:net :peer])
+                                             200))))
       (finally
         (close strapper)
         (close-peers peers)))))
 
-;(comment
+(comment
 (def strap (bootstrap-peer "db/strapper" {:port 2345}))
 (def strap-url (plasma-url "localhost" 2345))
 

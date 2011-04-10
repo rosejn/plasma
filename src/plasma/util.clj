@@ -1,4 +1,5 @@
-(ns plasma.util)
+(ns plasma.util
+  (:import (java.util.concurrent Executors TimeUnit)))
 
 (defn plasma-url
   [host port]
@@ -33,3 +34,17 @@
 (defn map-fn
   [m key fn & args]
   (assoc m key (apply fn (get m key) args)))
+
+(defn periodically
+  "Executes a function every period milliseconds.  Returns a function that can
+  be called to terminate the execution.  If true is passed as the argument to 
+  this function it will terminate immediately rather than waiting for the
+  already scheduled tasks to complete."
+  [period fun]
+  (let [s (Executors/newSingleThreadScheduledExecutor)]
+    (.scheduleAtFixedRate s fun (long 0) (long period) TimeUnit/MILLISECONDS)
+    (fn [& [now?]]
+      (if now?
+        (.shutdownNow s)
+        (.shutdown s)))))
+

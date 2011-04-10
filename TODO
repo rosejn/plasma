@@ -1,3 +1,6 @@
+* PlasmaPeer should have a root-id method, public-url, and maybe some other
+helpers.
+
 * new peer connections should always send their URL as the first message so they
   can be correctly stored in the connection cache, otherwise we just have the
   outgoing port number...

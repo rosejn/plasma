@@ -68,7 +68,7 @@
   [manager graph port listener options] ; peer-id, port, max-peers
 
   IQueryable
-  (ping [_] 
+  (ping [_]
         (log/to :peer "got ping...")
         :pong)
 
@@ -216,14 +216,27 @@
     (fn [{:keys [peer-id peer-port peer-host]}]
       (register-connection (:manager p) peer-host peer-port))))
 
+(defmulti rpc-handler
+  "A general purpose rpc multimethod."
+  (fn [peer req] (:method req)))
+
+(defmethod rpc-handler 'ping
+  [peer req]
+  (ping peer))
+
+(defmethod rpc-handler 'node-by-uuid
+  [peer req]
+  (node-by-uuid peer (first (:params req))))
+
+(defmethod rpc-handler 'query
+  [peer req]
+  (query peer (first (:params req))))
+
 (defn- request-handler
   [peer [ch req]]
   (log/format :peer "request-handler[%s]: %s" (:id req) (:method req))
   (try
-    (let [res (case (:method req)
-                'ping (ping peer)
-                'node-by-uuid (node-by-uuid peer (first (:params req)))
-                'query (query peer (first (:params req))))
+    (let [res (rpc-handler peer req)
           res (if (seq? res)
                 (doall res)
                 res)
@@ -252,9 +265,10 @@
   "Hook a connection up to a peer so that it can receive queries."
   [peer con]
   (log/to :peer "handle-peer-connection new-connection: " (:url con))
-  (register-connection (:manager peer) con)
+
   (lamina/receive-all (lamina/filter* #(not (nil? %)) (:chan con))
     (fn [msg] (log/to :peer "incoming request: " msg)))
+
   (lamina/receive-all (request-channel con)
                       (partial request-handler peer))
   (lamina/receive-all (stream-channel con)
@@ -306,7 +320,7 @@
 
 (defn peer-ping
   [con & [timeout]]
-  (lamina/wait-for-message (request con 'ping nil) 
+  (lamina/wait-for-message (request con 'ping nil)
                            (or timeout 2000)))
 
 (defmethod peer-sender "plasma"

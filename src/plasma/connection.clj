@@ -42,7 +42,7 @@
     [con]
     "Returns a channel for incoming stream requests.  The channel will receive
     [ch request] pairs, and the ch can be used as a named bi-direction stream.")
-  
+
   (on-closed
     [con handler]
     "Register a handler to be called when this connection is closed."))
@@ -146,8 +146,6 @@
   (let [{:keys [proto host port]} (url-map url)
         client (object-client {:host host :port port})
         chan   (lamina/wait-for-result client *connection-timeout*)]
-    ;(lamina/receive-all (type-channel chan :response)
-    ;                    #(log/to :con "client msg: " %))
     (Connection. url chan)))
 
 
@@ -218,7 +216,7 @@
 
   (refresh-connection
     [this con]
-    (swap! connections* 
+    (swap! connections*
            assoc (:url con) {:last-used (current-time) :con con})
     (when (>= (connection-count this) (config :connection-cache-limit))
       (purge-connections this))
