@@ -6,15 +6,30 @@
             [lamina.core :as lamina]
             [plasma.query :as q]))
 
+(defmacro with-peer-graph [p & body]
+  `(let [g# (:graph ~p)]
+     (locking g#
+     (if (= *graph* g#)
+       (do ~@body)
+       (with-graph g# ~@body)))))
+
 (defprotocol IQueryable
   (ping
     [this]
     "Simple test function to check that the peer is available.")
 
+  (root
+    [this]
+    "Get the root node for this peer's graph.")
+
   ; TODO: change this to find-node once core and query are refactored...
   (node-by-uuid
     [this id]
     "Lookup a node by UUID.")
+
+  (link
+    [this src node-map edge-props]
+    "Create an edge from src to a new node with the given edge properties.")
 
   (query
     [this q] [this q params] [this q params timeout]
@@ -37,7 +52,8 @@
   (iter-n-query
     [this iq] [this n q] [this n q params]
     "Execute a query iteratively, n times. The output of one execution is
-    used as the input to the iteration."))
+    used as the input to the iteration.")
+)
 
 ; Add support for specifying the binding variable name, rather than
 ; only using the ROOT-ID.
@@ -72,10 +88,20 @@
         (log/to :peer "got ping...")
         :pong)
 
+  (root
+    [this]
+    (with-peer-graph this (root-node)))
+
   (node-by-uuid
     [this id]
-    (with-graph graph
-                (find-node id)))
+    (with-peer-graph this (find-node id)))
+
+  (link
+    [this src node-props edge-props]
+    (with-peer-graph this
+                (let [n (make-node node-props)]
+                  (make-edge src n edge-props)
+                  n)))
 
   (query
     [this plan]
@@ -84,13 +110,14 @@
   (query
     [this plan params]
     (binding [*manager* manager]
-      (with-graph graph
+      #_(log/to :g "*graph*: " *graph* "\n(:graph this): " (:graph this))
+      (with-peer-graph this
                   (q/query plan params))))
 
   (query
     [this plan params timeout]
     (binding [*manager* manager]
-      (with-graph graph
+      (with-peer-graph this
                   (q/query plan params timeout))))
 
   (query-channel
@@ -106,7 +133,7 @@
   (sub-query
     [this ch plan]
     (binding [*manager* manager]
-      (with-graph graph
+      (with-peer-graph this
                   (q/sub-query ch plan))))
 
   (recur-query

@@ -25,9 +25,14 @@
   
     (make-edge alice bob :label :friend)
   "
-  [src tgt & {:as props}]
-  {:pre [(contains? props :label)]}
-  (update-node! :graph src #(assoc-in % [:edges tgt] props)))
+  [src tgt label-or-props]
+  (let [props (cond
+                (keyword? label-or-props) {:label label-or-props}
+                (and (map? label-or-props)
+                     (contains? label-or-props :label)) label-or-props
+                :default
+                (throw (Exception. "make-edge requires either a keyword label or a map containing the :label property.")))]
+    (update-node! :graph src #(assoc-in % [:edges tgt] props))))
 
 (declare find-node)
 
@@ -43,14 +48,22 @@
   (get-incoming :graph uuid))
 
 (defn make-node
-  "Create a node in the current graph that contains the given key-value pairs. If a UUID string is passed as the first argument then it will be used for the new node, otherwise a new one will be generated."
-  [& key-vals]
-  (let [[id key-vals] (if (and (odd? (count key-vals))
-                               (string? (first key-vals)))
-                        (list (first key-vals) (next key-vals))
-                        (list (uuid) key-vals))]
-    (apply add-node! :graph id :id id key-vals)
-    id))
+  "Create a node in the current graph.  Returns the ID of the new node.
+  
+  (make-node)         ; create a node with a generated UUID and no properties
+  (make-node \"foo\") ; create a node with ID foo and no properties
+  (make-node {:a 123 :b \"asdf\"}) ; generates a UUID and saves props in node
+  (make-node \"foo\" {:a 1324}) ; save node with id foo and props.
+  "
+  ([]
+   (make-node (uuid) {}))
+  ([arg] 
+   (if (map? arg) 
+     (make-node (uuid) arg)
+     (make-node arg {})))
+  ([id props]
+   (add-node! :graph id :id id props)
+   id))
 
 (defn remove-node
   "Remove a node and all of its incoming edges from the graph."
@@ -59,6 +72,16 @@
     (doseq [src incoming-sources] ; remove incoming edges
       (update-node! :graph src #(dissoc-in % [:edges uuid])))
     (delete-node! :graph uuid)))
+
+(defn make-proxy-node
+  "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."
+  [uuid url]
+  (make-node uuid {:proxy url}))
+
+(defn proxy-node?
+  "Check whether the node with the given UUID is a proxy node."
+  [uuid]
+  (contains? (find-node uuid) :proxy))
 
 (defn remove-edge
   "Remove the edge going from src to tgt.  Optionally takes a predicate
@@ -99,8 +122,8 @@ For example:\n\t(with-graph G (find-node id))\n")))
 
 (defn- init-new-graph
   [root-id]
-  (let [root (make-node root-id :label :root)
-        meta (make-node (config :meta-id) :root root)]
+  (let [root (make-node root-id {:label :root})
+        meta (make-node (config :meta-id) {:root root})]
     {:root root}))
 
 (defn graph
@@ -119,22 +142,12 @@ For example:\n\t(with-graph G (find-node id))\n")))
   (truncate!)
   (init-new-graph (:root (meta *graph*))))
 
-(defn proxy-node
-  "Create a proxy node, representing a node on a remote graph which can be located by accessing the given url."
-  [uuid url]
-  (make-node uuid :proxy url))
-
-(defn proxy-node?
-  "Check whether the node with the given UUID is a proxy node."
-  [uuid]
-  (contains? (find-node uuid) :proxy))
-
 (defmacro with-nodes! [bindings & body]
   (let [nodes (map (fn [[node-sym props]]
-                     (let [props (seq (if (keyword? props)
+                     (let [props (if (keyword? props)
                                    {:label props}
-                                   props))]
-                       [node-sym (apply concat '(make-node) props)]))
+                                   props)]
+                       [node-sym `(make-node ~props)]))
                    (partition 2 bindings))
         nodes (vec (apply concat nodes))]
     `(let ~nodes ~@body)))

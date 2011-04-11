@@ -16,7 +16,7 @@
       (doseq [id ids]
         (make-node id))
       (doseq [src srcs]
-        (make-edge src tgt :label :foo))
+        (make-edge src tgt {:label :foo}))
       (is (= 3 (count (incoming-nodes tgt))))
       (remove-edge "b" tgt)
       (is (= 2 (count (incoming-nodes tgt))))

@@ -46,9 +46,13 @@
 
 (deftest project-test
   (let [q (-> (path [synth [:music :synths :synth]])
-            (project 'synth :label))]
+            (project 'synth :label))
+        q2 (-> (path [synth [:music :synths :synth]])
+             (project 'synth))]
     (is (= #{:kick :bass :snare :hat}
-           (set (map :label (query q)))))))
+           (set (map :label (query q)))))
+    (is (= #{:kick :bass :snare :hat}
+           (set (map (comp :label find-node) (query q2)))))))
 
 (deftest count-test
   (let [q (count* (limit (path [synth [:music :synths :synth]])
@@ -106,5 +110,5 @@
   (recurse (path [:net :peer])
            :count 10))
 
-(use-fixtures :once test-fixture)
+(use-fixtures :each test-fixture)
 

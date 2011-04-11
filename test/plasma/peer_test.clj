@@ -18,7 +18,7 @@
       (let [client (get-connection manager (plasma-url "localhost" 1234))]
         (dotimes [i 20]
           (let [res-chan (request client 'ping nil)
-                res (lamina/wait-for-message res-chan 100)]
+                res (lamina/wait-for-message res-chan 200)]
             (is (= :pong (:result res)))))
         (close client))
       (finally
@@ -36,19 +36,24 @@
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 1000 (rand-int 10000))
         local (peer "db/p1" {:port port})
+        root-id (root local)
         manager (:manager local)]
     (try
       (reset-peer local)
+      (let [foo (link local root-id {:name "foo"} :foo)
+            bar (link local foo {:name "bar"} :bar)]
+        (is (= bar (first (query local (q/path [:foo :bar]))))))
+
       (let [con (get-connection manager (plasma-url "localhost" port))]
-        (is (= :pong (:result (lamina/wait-for-message (request con 'ping []) 100))))
+        (is (= :pong (:result (lamina/wait-for-message (request con 'ping []) 200))))
         (is (uuid? (:id (peer-node con ROOT-ID 1000))))
         (let [q (q/path [synth [:music :synths :synth]]
                   (where (>= (:score synth) 0.6)))
-              lres (query local q {} 100)
-              res (peer-query con q 100)
+              lres (query local q {} 200)
+              res (peer-query con q 200)
               chan-res (take 2
                              (lamina/lazy-channel-seq
-                               (query-channel local q) 100))]
+                               (query-channel local q) 200))]
           (is (= lres res chan-res))
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label (map #(peer-node con % 1000) res)))))))
@@ -69,21 +74,21 @@
       (reset-peer remote)
       ; Add a proxy node to the local graph pointing to the root of the remote
       ; graph.
-      (let [remote-root (peer-node remote-p ROOT-ID 100)
+      (let [remote-root (peer-node remote-p ROOT-ID 200)
             _ (log/to :peer "remote-root: " remote-root)
-            net (first (query local (q/path [:net]) {} 100))
+            net (first (query local (q/path [:net]) {} 200))
             _ (log/to :peer "net: " net)
             peer-proxy (with-graph (:graph local)
-                        (proxy-node (:id remote-root)
+                        (make-proxy-node (:id remote-root)
                                     (plasma-url "localhost" (inc port))))
             link (with-graph (:graph local)
-                   (make-edge net peer-proxy :label :peer))]
+                   (make-edge net peer-proxy :peer))]
 
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
         (let [q (-> (q/path [synth [:net :peer :music :synths :synth]])
                   (q/project 'synth :label))
-              res (take 4 (query local q {} 100))]
+              res (take 4 (query local q {} 200))]
           (is (= #{:kick :bass :snare :hat}
                  (set (map :label res))))
           (comment println "res: " res)))
@@ -114,29 +119,29 @@
                                         a {:label (str "a-" n) :score 0.1}
                                         b {:label (str "b-" n) :score 0.5}
                                         c {:label (str "c-" n) :score 0.9}]
-                            (make-edge root-id net :label :net)
-                            (make-edge root-id docs :label :docs)
-                            (make-edge docs a :label :doc)
-                            (make-edge docs b :label :doc)
-                            (make-edge docs c :label :doc))
+                            (make-edge root-id net :net)
+                            (make-edge root-id docs :docs)
+                            (make-edge docs a :doc)
+                            (make-edge docs b :doc)
+                            (make-edge docs c :doc))
                           [p root-id n]))))
                   (range n-peers)))]
     (try
       (with-graph (:graph local)
         (clear-graph)
         (let [root-id (root-node)
-              net (make-node :label :net)]
-          (make-edge root-id net :label :net)
+              net (make-node {:label :net})]
+          (make-edge root-id net {:label :net})
           (doseq [[p peer-root n] peers]
             (make-edge net
-                  (proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
-                  :label :peer))
+                  (make-proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
+                  :peer))
          ; (println "peers: " (query (path [:net :peer])))
           ))
         (let [q (-> (q/path [doc [:net :peer :docs :doc]]
                       (where (> (:score doc) 0.5)))
                   (q/project 'doc :label :score))
-              res (query local q {} 100)]
+              res (query local q {} 200)]
           ;(println "res: " res)
           (is (= n-peers (count res))))
       (finally
@@ -152,7 +157,7 @@
                     (take (inc n) (iterate
                               (fn [src-id]
                                 (let [n (make-node)]
-                                  (make-edge src-id n :label label)
+                                  (make-edge src-id n label)
                                   n))
                               src)))]
     (log/to :peer "----------------------\n"
@@ -195,11 +200,11 @@
     (try
       (on-connect (:listener p2) (fn [incoming]
                                    (future
-                                     (let [root (peer-node incoming ROOT-ID 100)]
+                                     (let [root (peer-node incoming ROOT-ID 200)]
                                        (swap! res #(conj % [1 (:id root)]))))))
       (on-connect (:listener p2) (fn [incoming]
                                    (future
-                                     (let [root (peer-node incoming ROOT-ID 100)]
+                                     (let [root (peer-node incoming ROOT-ID 200)]
                                        (swap! res #(conj % [2 (:id root)]))))))
       (let [con (get-connection (connection-manager) (plasma-url "localhost" 3333))]
         (handle-peer-connection p1 con)

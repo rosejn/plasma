@@ -8,30 +8,31 @@
 
 (defn test-graph []
   (let [root-id (root-node)]
-    (with-nodes! [music :music
-                  synths :synths
-                  kick  {:label :kick  :score 0.8}
-                  hat   {:label :hat   :score 0.3}
-                  snare {:label :snare :score 0.4}
-                  bass  {:label :bass  :score 0.6}
+    (with-nodes! [net      :net
+                  music    :music
+                  synths   :synths
+                  kick    {:label :kick  :score 0.8}
+                  hat     {:label :hat   :score 0.3}
+                  snare   {:label :snare :score 0.4}
+                  bass    {:label :bass  :score 0.6}
                   sessions :sessions
                   take-six :take-six
                   red-pill :red-pill]
-                 (make-edge root-id (make-node :label :net) :label :net)
-                 (make-edge root-id music :label :music)
-                 (make-edge music synths :label :synths)
-                 (make-edge synths bass :label :synth)
-                 (make-edge synths hat  :label :synth)
-                 (make-edge synths kick :label :synth)
-                 (make-edge synths snare :label :synth)
-                 (make-edge root-id sessions :label :sessions)
-                 (make-edge sessions take-six :label :session)
-                 (make-edge take-six kick :label :synth)
-                 (make-edge take-six bass :label :synth)
-                 (make-edge sessions red-pill :label :session)
-                 (make-edge red-pill hat   :label :synth)
-                 (make-edge red-pill snare :label :synth)
-                 (make-edge red-pill kick  :label :synth))))
+                 (make-edge root-id net       :net)
+                 (make-edge root-id music     :music)
+                 (make-edge music synths      :synths)
+                 (make-edge synths bass       :synth)
+                 (make-edge synths hat        :synth)
+                 (make-edge synths kick       :synth)
+                 (make-edge synths snare      :synth)
+                 (make-edge root-id sessions  :sessions)
+                 (make-edge sessions take-six :session)
+                 (make-edge take-six kick     :synth)
+                 (make-edge take-six bass     :synth)
+                 (make-edge sessions red-pill :session)
+                 (make-edge red-pill hat      :synth)
+                 (make-edge red-pill snare    :synth)
+                 (make-edge red-pill kick     :synth))))
 
 (defn test-fixture [f]
   (with-graph G

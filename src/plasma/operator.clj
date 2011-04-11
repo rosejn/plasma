@@ -452,9 +452,3 @@
   (let [count-fn (fn [arg-seq] [(count arg-seq)])]
     (aggregate-op id left count-fn)))
 
-(comment defn recurse-op
-  "Recursively executes a query, where the output of one iteration is fed as
-  input to the next."
-  [id left param]
-  (siphon left param))
-

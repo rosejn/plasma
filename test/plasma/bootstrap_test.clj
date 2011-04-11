@@ -33,22 +33,17 @@
                   (clear-graph)
                   (let [root-id (root-node)]
                     (node-assoc root-id :peer-id i)
-                    (make-edge root-id (make-node) :label :net))))]
+                    (make-edge root-id (make-node) :net))))]
     (is (= 1 (count (query strapper (q/path [:net]) 200))))
     (try
       (doall
         (for [p peers]
-          (do
-            (Thread/sleep 200)
-            (bootstrap p strap-url))))
-      (Thread/sleep BOOTSTRAP-RETRY-PERIOD)
-      (is (= n-peers (count (query strapper (q/path [:net :peer])
-                                   200))))
-      (is (every?
-            (fn [p]
-              (= N-BOOTSTRAP-PEERS 
-                 (first (query p (q/count* (q/path [:net :peer])) 200))))
-            peers))
+          (bootstrap p strap-url)))
+      (Thread/sleep (* 2.1 BOOTSTRAP-RETRY-PERIOD))
+      (let [all-peers (query strapper (q/path [:net :peer]))
+            p-count (first (query (first peers) (q/count* (q/path [:net :peer])) 200))]
+        (is (= n-peers (count all-peers)))
+        (is (= N-BOOTSTRAP-PEERS p-count)))
       (finally
         (close strapper)
         (close-peers peers)))))
@@ -62,7 +57,7 @@
                   (clear-graph)
                   (let [root-id (root-node)]
                     (node-assoc root-id :peer-id i)
-                    (make-edge root-id (make-node) :label :net)))))
+                    (make-edge root-id (make-node) :net)))))
 
 ;(def con (get-connection (:manager (first peers)) strap-url))
 (bootstrap (first peers) (plasma-url "localhost" 2234))

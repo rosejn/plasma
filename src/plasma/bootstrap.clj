@@ -1,42 +1,50 @@
 (ns plasma.bootstrap
-  (:use [plasma core connection peer util config network]
-        jiraph.graph)
+  (:use [plasma core connection peer util config network])
   (:require [plasma.query :as q]
             [lamina.core :as lamina]
             [logjam.core :as log]))
 
-(defn- setup-graph
-  [g]
-  (with-graph g
+(log/file :bootstrap "boot.log")
+
+(defn- setup-peer-graph
+  [p]
+  (with-peer-graph p
     (clear-graph)
     (let [root (root-node)]
-      (make-edge root (make-node) :label :net))))
+      (make-edge root (make-node) :net))))
 
 (defn- peer-urls
-  []
-  (q/query (-> (q/path [peer [:net :peer]])
-             (q/project 'peer :url))))
+  [p]
+  (with-peer-graph p
+    (q/query (-> (q/path [peer [:net :peer]])
+               (q/project 'peer :url)))))
 
 (defn- have-peer?
-  [url]
-  (contains? (set (peer-urls)) url))
+  [p url]
+  (contains? (set (peer-urls p)) url))
 
 (defn- net-root
-  []
-  (first (q/query (q/path [:net]))))
+  [p]
+  (with-peer-graph p
+    (first (q/query (q/path [:net])))))
 
 (defn- add-peer
-  [id url]
+  [p id url]
   (log/to :bootstrap "add-peer: " id url)
-  (make-edge (net-root) (proxy-node id url) :label :peer))
+  (with-peer-graph p 
+    (let [prx (make-proxy-node id url)
+          net (net-root p)]
+      (log/to :bootstrap "proxy: " prx "net: " net)
+      (make-edge net prx :peer)
+      (log/to :bootstrap "new-net: " (find-node net)
+              "\nnew-proxy: " (find-node prx)))))
 
 (defn- advertise-handler
-  [peer con event]
+  [p con event]
   (let [[root-id url] (:params event)]
     (log/to :bootstrap "advertise-event:" url root-id)
-    (with-graph (:graph peer)
-                (unless (have-peer? url)
-                        (add-peer root-id url)))))
+    (unless (have-peer? p url)
+            (add-peer p root-id url))))
 
 (defn- bootstrap-connect-handler
   [p con]
@@ -49,25 +57,27 @@
   ([path] (bootstrap-peer path {}))
   ([path options]
    (let [p (peer path options)]
-     (setup-graph (:graph p))
+     (setup-peer-graph p)
      (on-connect p (partial bootstrap-connect-handler p))
      p)))
 
 (def N-BOOTSTRAP-PEERS 5)
-(def BOOTSTRAP-RETRY-PERIOD 2000)
+(def BOOTSTRAP-RETRY-PERIOD 500)
 
 (defn add-bootstrap-peers
   [p con n]
   (let [new-peers (peer-query con (-> (q/path [peer [:net :peer]])
-                                  (q/choose n)
-                                  (q/project 'peer [:proxy :id]))
+                                    (q/project 'peer :proxy :id)
+                                    (q/choose n))
                               2000)]
-    (with-graph (:graph p)
-      (let [net (net-root)]
-        (doseq [{url :proxy id :id} new-peers]
-          (make-edge net (proxy-node id url) :label :peer)))))
+    (log/to :bootstrap "n: " n "\nnew-peers: " (seq new-peers))
+      (let [net (net-root p)]
+        (with-peer-graph p
+          (doseq [{url :proxy id :id} new-peers]
+            (make-edge net (make-proxy-node id url) :peer)))))
   (let [n-peers (first (query p (q/count*
                                   (q/path [:net :peer]))))]
+    (log/to :bootstrap "n-peers: " n-peers)
     (when (< n-peers N-BOOTSTRAP-PEERS)
       (schedule BOOTSTRAP-RETRY-PERIOD
                 #(add-bootstrap-peers p con (- N-BOOTSTRAP-PEERS n-peers))))))
@@ -77,12 +87,12 @@
   (send-event con :advertise [root-id url]))
 
 (defn bootstrap
-  [peer boot-url]
-  (let [booter (get-connection (:manager peer) boot-url)
-        root-id (with-graph (:graph peer) (root-node))
-        my-url (public-url (:port peer))]
+  [p boot-url]
+  (let [booter (get-connection (:manager p) boot-url)
+        root-id (with-peer-graph p (root-node))
+        my-url (public-url (:port p))]
     (advertise booter root-id my-url)
-    (handle-peer-connection peer booter)
-    (add-bootstrap-peers peer booter N-BOOTSTRAP-PEERS)))
+    (handle-peer-connection p booter)
+    (add-bootstrap-peers p booter N-BOOTSTRAP-PEERS)))
 
 

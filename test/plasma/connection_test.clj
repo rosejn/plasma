@@ -4,8 +4,8 @@
   (:require [logjam.core :as log]
             [lamina.core :as lamina]))
 
-(log/file :con "con.log")
-(log/repl :con)
+;(log/file :con "con.log")
+;(log/repl :con)
 
 (defrecord MockConnection
   [url]
