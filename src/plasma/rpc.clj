@@ -22,6 +22,7 @@
             val))
   {:type :response
    :id (:id req)
+   :error nil
    :result val})
 
 (defn rpc-event
@@ -36,8 +37,9 @@
   "An RPC error for the given request."
   [req msg & [data]]
   (log/to :rpc "rpc-error[" (trim-id (:id req)) "]: " msg)
-  {:type :error
+  {:type :response
    :id (:id req)
+   :result nil
    :error {:message msg
            :data data}})
 
