@@ -290,7 +290,7 @@
   (lamina/receive-all (request-channel con)
                       (partial request-handler peer))
   (lamina/receive-all (stream-channel con)
-                      (partial stream-handler peer)))
+                      (partial stream-request-handler peer)))
 
 (defn peer
   "Create a new peer using a graph database located at path, optionally
