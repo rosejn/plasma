@@ -24,7 +24,7 @@
     "Create an edge from src to a new node with the given edge properties.")
 
   (query
-    [this q] [this q params]
+    [this q] [this q params] [this q params timeout]
     "Issue a query against the peer's graph.")
 
   (query-channel
@@ -33,7 +33,7 @@
     results will be enqueued.")
 
   (sub-query
-    [this ch plan]
+    [this ch q]
     "Execute a sub-query against the peer's graph, streaming the results back
     to the source of the sub-query.")
 
@@ -83,36 +83,39 @@
   (link
     [this src node-props edge-props]
     (with-peer-graph this
-                (let [n (make-node node-props)]
-                  (make-edge src n edge-props)
-                  n)))
+      (let [n (make-node node-props)]
+        (make-edge src n edge-props)
+        n)))
 
   (query
-    [this plan]
-    (query this plan {}))
+    [this q]
+    (query this q {}))
 
   (query
-    [this plan params]
+    [this q params]
+    (query this q params q/MAX-QUERY-TIME))
+
+  (query
+    [this q params timeout]
     (binding [*manager* manager]
-      #_(log/to :g "*graph*: " *graph* "\n(:graph this): " (:graph this))
-      (with-peer-graph this
-                  (q/query plan params))))
+      (with-peer-graph this 
+        (q/query q params timeout))))
 
   (query-channel
-    [this plan]
-    (query-channel this plan {}))
+    [this q]
+    (query-channel this q {}))
 
   (query-channel
-    [this plan params]
+    [this q params]
     (binding [*manager* manager]
       (with-peer-graph this
-        (q/query-channel plan params))))
+        (q/query-channel q params))))
 
   (sub-query
-    [this ch plan]
+    [this ch q]
     (binding [*manager* manager]
       (with-peer-graph this
-        (q/sub-query ch plan))))
+        (q/sub-query ch q))))
 
   (recur-query
     [this pred q]
@@ -131,17 +134,17 @@
       (recur-query this iplan)))
 
   (recur-query
-    [this plan]
-     (comment let [plan (map-fn plan :recur-count dec)
-           res-chan (query-channel plan (:params plan))]
+    [this q]
+     (comment let [q (map-fn q :recur-count dec)
+           res-chan (query-channel q (:params q))]
        (lamina/on-closed res-chan
          (fn []
            (let [res (lamina/channel-seq res-chan)]
              ; Send the result back if we hit the end of the recursion
-             (if (zero? (:recur-count plan))
-               (let [src-url (:src-url plan)
-                     query-id (:id plan)
-                     con (get-connection manager (:src-url plan))]
+             (if (zero? (:recur-count q))
+               (let [src-url (:src-url q)
+                     query-id (:id q)
+                     con (get-connection manager (:src-url q))]
                  (send-event con query-id res))
 
                ; or recur if not
@@ -151,8 +154,8 @@
                  (receive-all res-chan
                               (fn [v]
                                 (if (proxy-node? v)
-                                  (peer-recur plan v)
-                                  (recur* plan v)))))))))))))
+                                  (peer-recur q v)
+                                  (recur* q v)))))))))))))
 
   ; TODO: Support binding to a different parameter than the ROOT-ID
   ; by passing a {:bind 'my-param} map.
@@ -231,7 +234,8 @@
 
 (defmethod rpc-handler 'query
   [peer req]
-  (query peer (first (:params req))))
+  (apply query peer (:params req)))
+;  (query peer (first (:params req))))
 
 (defn- request-handler
   [peer [ch req]]
@@ -250,12 +254,25 @@
       (lamina/enqueue ch
         (rpc-error req "Exception occured while handling request." e)))))
 
-(defn- stream-handler
+(defmulti stream-handler
+  "A general purpose stream multimethod."
+  (fn [peer ch req] (:method req)))
+
+(defmethod stream-handler 'sub-query
+  [peer ch req]
+  (apply sub-query peer ch (:params req)))
+
+(defmethod stream-handler 'query-channel
+  [peer ch req]
+  (log/to :peer "stream-handler query-channel: " req)
+  (let [res-chan (apply query-channel peer (:params req))]
+    (lamina/siphon res-chan ch)))
+
+(defn- stream-request-handler
   [peer [ch req]]
   (log/to :peer "stream-request: " (:id req))
   (try
-    (case (:method req)
-      'sub-query (sub-query peer ch (first (:params req))))
+    (stream-handler peer ch req)
     (catch Exception e
       (log/to :peer "error handling stream request!\n"
               "-------------------------------\n"
@@ -314,14 +331,19 @@
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
-  [con q]
-  (let [res-chan (request con 'query [q])]
-    (lamina/receive-all (lamina/fork res-chan)
-                        #(log/to :peer "peer-query result: " %))
-    (lamina/map* :result res-chan)))
+  ([con q]
+   (peer-query con q {}))
+  ([con q params]
+   (peer-query con q params q/MAX-QUERY-TIME))
+  ([con q params timeout]
+   (wait-for (lamina/map* :result (request con 'query [q params]))
+               timeout)))
 
 (defn peer-query-channel
-  [con q])
+  ([con q]
+   (peer-query-channel con q {}))
+  ([con q params]
+   (stream con 'query-channel [q params])))
 
 (defn peer-sub-query
   [con q]
@@ -332,10 +354,6 @@
 
 (defn peer-iter-n-query
   [con q n])
-
-(defn wait-for
-  [chan timeout]
-  (lamina/wait-for-message chan timeout))
 
 (extend plasma.connection.Connection
   IQueryable

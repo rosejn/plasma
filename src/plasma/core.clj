@@ -19,21 +19,6 @@
   (fn [url]
     (:proto (url-map url))))
 
-(defn make-edge
-  "Create an edge from src to tgt with the associated properties.  At minimum
-  there must be a :label property.
-
-    (make-edge alice bob :label :friend)
-  "
-  [src tgt label-or-props]
-  (let [props (cond
-                (keyword? label-or-props) {:label label-or-props}
-                (and (map? label-or-props)
-                     (contains? label-or-props :label)) label-or-props
-                :default
-                (throw (Exception. "make-edge requires either a keyword label or a map containing the :label property.")))]
-    (update-node! :graph src #(assoc-in % [:edges tgt] props))))
-
 (declare find-node)
 
 (defn get-edges [node & [pred]]
@@ -46,6 +31,11 @@
   "Return the set of source nodes for all incoming edges to the node with uuid."
   [uuid]
   (get-incoming :graph uuid))
+
+(defn root-node
+  "Get the UUID of the root node of the graph."
+  []
+  (:root (meta *graph*)))
 
 (defn make-node
   "Create a node in the current graph.  Returns the ID of the new node.
@@ -83,6 +73,24 @@
   [uuid]
   (contains? (find-node uuid) :proxy))
 
+(defn make-edge
+  "Create an edge from src to tgt with the associated properties.  At minimum
+  there must be a :label property.
+
+    (make-edge alice bob :label :friend)
+  "
+  [src tgt label-or-props]
+  (let [src (if (= ROOT-ID src)
+              (root-node)
+              src)
+        props (cond
+                (keyword? label-or-props) {:label label-or-props}
+                (and (map? label-or-props)
+                     (contains? label-or-props :label)) label-or-props
+                :default
+                (throw (Exception. "make-edge requires either a keyword label or a map containing the :label property.")))]
+    (update-node! :graph src #(assoc-in % [:edges tgt] props))))
+
 (defn remove-edge
   "Remove the edge going from src to tgt.  Optionally takes a predicate
   function that will be passed the property map for the edge, and the
@@ -100,11 +108,6 @@
   "Associate key/value pairs with a given node id."
   [uuid & key-vals]
   (apply assoc-node! :graph uuid (apply hash-map key-vals)))
-
-(defn root-node
-  "Get the UUID of the root node of the graph."
-  []
-  (:root (meta *graph*)))
 
 (defn find-node
   "Lookup a node map by UUID."

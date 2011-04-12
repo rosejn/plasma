@@ -1,4 +1,5 @@
 (ns plasma.util
+  (:require [lamina.core :as lamina])
   (:import (java.util.concurrent Executors TimeUnit)))
 
 (defn plasma-url
@@ -61,4 +62,8 @@
     (.schedule s fun (long ms) TimeUnit/MILLISECONDS)
     (fn []
         (.shutdownNow s))))
+
+(defn wait-for
+  [chan timeout]
+  (lamina/wait-for-message chan timeout))
 

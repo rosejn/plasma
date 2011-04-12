@@ -215,7 +215,7 @@
 
 (defn count*
   [{root :root :as plan}]
-  (append-root-op plan 
+  (append-root-op plan
                   (assoc (plan-op :count
                                   :deps [root]
                                   :args [])
@@ -467,8 +467,8 @@
   (get (:ops p) (:root p)))
 
 (defn with-result-project
-  "If an explicit projection has not been added to the query plan and the 
-  root operator outputs path maps then by default we project on the final 
+  "If an explicit projection has not been added to the query plan and the
+  root operator outputs path maps then by default we project on the final
   element of the path query."
   [plan]
   (if (or (has-projection? plan)
@@ -529,10 +529,10 @@
   "Issue a query to the currently bound graph."
   ([plan]
    (query plan {}))
-  ([plan param-map & [timeout]]
-   (query-result-seq (query-channel plan param-map)
-                            (or timeout
-                                MAX-QUERY-TIME))))
+  ([plan params]
+   (query plan params MAX-QUERY-TIME))
+  ([plan params timeout]
+   (query-result-seq (query-channel plan params) timeout)))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."

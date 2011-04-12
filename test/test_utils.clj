@@ -1,8 +1,8 @@
 (ns test-utils
-  (:use [plasma core operator connection]
-        [clojure test stacktrace]
-        [jiraph graph])
-  (:require [lamina.core :as lamina]))
+  (:use [plasma core operator connection peer]
+        [clojure test stacktrace])
+  (:require [lamina.core :as lamina]
+            [jiraph.graph :as jiraph]))
 
 (def G (open-graph "test/db"))
 
@@ -35,10 +35,23 @@
                  (make-edge red-pill kick     :synth))))
 
 (defn test-fixture [f]
-  (with-graph G
+  (jiraph/with-graph G
     (clear-graph)
     (test-graph)
     (f)))
+
+(defn make-peers
+  "Create n peers, each with a monotically increasing port number.
+  Then run (fun i) with the peer graph bound to initialize each peer,
+  and i being the index of the peer being created."
+  [n start-port fun]
+  (doall
+    (for [i (range n)]
+        (let [p (peer (str "db/peer-" i)
+                      {:port (+ start-port i)})]
+          (with-peer-graph p
+                      (fun i)
+                      p)))))
 
 (defn close-peers
   [peers]

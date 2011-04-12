@@ -5,7 +5,6 @@
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
-;            [jiraph.graph :as graph]
             [plasma.query :as q]))
 
 ;(log/file :peer "peer.log")
@@ -49,10 +48,10 @@
         (let [q (q/path [synth [:music :synths :synth]]
                   (where (>= (:score synth) 0.6)))
               lres (query local q)
-              res (wait-for (query con q) 1000)
+              res (query con q {} 1000)
               chan-res (take 2
                              (lamina/lazy-channel-seq
-                               (query-channel local q) 200))]
+                               (query-channel con q) 200))]
           (is (= lres res chan-res))
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con %) 200) 
@@ -216,3 +215,10 @@
           (close p1)
           (close p2)))))
 
+(comment
+(def p (peer "db/p1" {:port 1234}))
+(def con (get-connection (connection-manager) (plasma-url "localhost" 1234)))
+(query p (q/path [:net]))
+(query con (q/path [:net]))
+(query-channel con (q/path [:net]))
+  )

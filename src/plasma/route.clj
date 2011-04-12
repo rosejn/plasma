@@ -14,32 +14,40 @@
 (defn greedy-iter
   [])
 
-(defn addr-bits [host port n-bits]
+(defn id-bits [id n-bits]
   (mod
-    (hex->int (hex (sha1 (str host port))))
+    (hex->int (hex (sha1 id)))
     (expt 2 n-bits)))
 
 (defn chord-distance [a b n-bits]
-  (let [max-n (expt 2 n-bits)]
+  (let [a (id-bits a n-bits)
+        b (id-bits b n-bits)
+        max-n (expt 2 n-bits)]
     (mod (+ (- b a) 
             max-n)
          max-n)))
 
-(defn kademlia-distance [a b]
-  (bit-xor a b))
+(defn kademlia-distance [a b n-bits]
+  (let [a (id-bits a n-bits)
+        b (id-bits b n-bits)]
+    (bit-xor a b)))
+
+(defn closest-peer
+  [p tgt-id]
+  (let [peers (query p (-> (q/path [p [:net :peer]])
+                         (q/project 'p :id :proxy)))]
+    (take 1 (sort-by #(kademlia-distance tgt-id (:id %)) peers))))
 
 (defn dht-lookup
   [p tgt-id]
-  (let [res-chan (iter-n-query local 10 (q/path [:net :peer]))]
-    (first (lamina/channel-seq res-chan 200))))
-
-(defn closest-peer
-  [p]
-  (let [my-id (:guid (get-node p (root p)))
-        peers (query (-> (q/path [p [:net :peer]])
-                       (q/project 'p :id :guid :proxy)))]
-    (take 1 (sort-by #(kademlia-distance my-id (:guid %)) peers))))
-
+  (let [root (get-node p ROOT-ID)]
+    (loop [closest (assoc root
+                          :con p)]
+      (let [cp (closest-peer (:con closest) tgt-id)]
+        (if (< (kademlia-distance tgt-id (:id cp))
+               (kademlia-distance tgt-id (:id closest)))
+          (recur (assoc cp :con (peer-connection p (:proxy cp))))
+          closest)))))
 
 (defn dht-join 
   "Find peers with the addrs that fit in the slots of our peer table.
@@ -48,4 +56,5 @@
     guid + 2^0, 2^1, 2^2, 2^3, etc...
   "
   [p]
+
 )
