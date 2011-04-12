@@ -10,8 +10,7 @@
 (defn presence-listener
   "Returns a channel that will receive all presence messages."
   []
-  (let [msg-chan (wait-for-result (create-udp-object-socket
-                                    :port (config :presence-port)))]
+  (let [msg-chan @(udp-object-socket {:port (config :presence-port)})]
     (filter* (fn [msg]
                (and (associative? msg)
                     (= :presence (:type msg))))
@@ -32,7 +31,7 @@
 (defn broadcast-presence
   "Start periodically broadcasting a presence message."
   []
-  (send broadcaster* (fn [_] (wait-for-result (create-udp-object-socket))))
+  (send broadcaster* (fn [_] @(udp-object-socket)))
   (reset! broadcasting? true)
   (let [send-fn (fn sender [msg-chan]
                  (enqueue msg-chan (presence-message))
