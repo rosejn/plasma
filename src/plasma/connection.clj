@@ -7,7 +7,7 @@
 (def *connection-timeout* 2000)
 (def *cache-keep-ratio* 0.8)
 
-(log/repl :con)
+;(log/repl :con)
 
 (defprotocol IClosable
   (close [this]))
@@ -15,7 +15,7 @@
 (defprotocol IConnection
   (request
     [con method params]
-    "Send a request over this connection. Returns a constant channel
+    "Send a request over this connection. Returns a channel
     that will receive the single result message.")
 
   (request-channel
@@ -53,13 +53,12 @@
   (lamina/filter*
     (fn [msg] (and (associative? msg)
                    (= type (:type msg))))
-    (lamina/fork chan)))
+    chan))
 
 (defn- response-channel
-  "Returns a constant channel that will receive a single response
-  for the request id."
+  "Returns a channel that will receive a single response for the request id."
   [chan id]
-  (let [res-chan (lamina/constant-channel)
+  (let [res-chan (lamina/channel)
         res (lamina/take* 1 (lamina/filter* #(= id (:id %))
                              (type-channel chan :response)))]
     (lamina/siphon res res-chan)

@@ -50,6 +50,7 @@
             (let [res-chan (request client 'foo [i])
                   res (lamina/wait-for-message res-chan 100)]
               (is (= (* 2 i) (:result res)))))
+          (is (zero? (count (:chan client))))
           (close client))
       (finally
         (close listener)

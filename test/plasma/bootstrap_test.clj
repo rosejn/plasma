@@ -1,6 +1,5 @@
 (ns plasma.bootstrap-test
   (:use [plasma core util connection peer bootstrap]
-        jiraph.graph
         test-utils
         clojure.test
         clojure.stacktrace)
@@ -19,7 +18,7 @@
     (for [i (range n)]
         (let [p (peer (str "db/peer-" i)
                       {:port (+ start-port i)})]
-          (with-graph (:graph p)
+          (with-peer-graph p
                       (fun i)
                       p)))))
 

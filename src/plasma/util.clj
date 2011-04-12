@@ -20,6 +20,11 @@
   (and (string? s)
        (= (seq "UUID:") (take 5 (seq s)))))
 
+(defn trim-id
+  "Returns a short version of a uuid."
+  [id & [n]]
+  (apply str (take (or n 4) (drop 5 id))))
+
 (defn current-time []
   (System/currentTimeMillis))
 

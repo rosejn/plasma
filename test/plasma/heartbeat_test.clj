@@ -1,6 +1,5 @@
 (ns plasma.heartbeat-test
   (:use [plasma core util connection peer bootstrap]
-        jiraph.graph
         test-utils
         clojure.test
         clojure.stacktrace)

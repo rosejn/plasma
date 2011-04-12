@@ -19,10 +19,10 @@
   (fn [url]
     (:proto (url-map url))))
 
-(defn make-edge 
+(defn make-edge
   "Create an edge from src to tgt with the associated properties.  At minimum
   there must be a :label property.
-  
+
     (make-edge alice bob :label :friend)
   "
   [src tgt label-or-props]
@@ -49,7 +49,7 @@
 
 (defn make-node
   "Create a node in the current graph.  Returns the ID of the new node.
-  
+
   (make-node)         ; create a node with a generated UUID and no properties
   (make-node \"foo\") ; create a node with ID foo and no properties
   (make-node {:a 123 :b \"asdf\"}) ; generates a UUID and saves props in node
@@ -57,8 +57,8 @@
   "
   ([]
    (make-node (uuid) {}))
-  ([arg] 
-   (if (map? arg) 
+  ([arg]
+   (if (map? arg)
      (make-node (uuid) arg)
      (make-node arg {})))
   ([id props]
@@ -126,7 +126,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
         meta (make-node (config :meta-id) {:root root})]
     {:root root}))
 
-(defn graph
+(defn open-graph
   "Open a graph database located at path, creating it if it doesn't already exist."
   [path]
   (let [g {:graph (layer path)}]

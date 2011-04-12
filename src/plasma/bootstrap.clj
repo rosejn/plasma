@@ -66,10 +66,9 @@
 
 (defn add-bootstrap-peers
   [p con n]
-  (let [new-peers (peer-query con (-> (q/path [peer [:net :peer]])
+  (let [new-peers (wait-for (query con (-> (q/path [peer [:net :peer]])
                                     (q/project 'peer :proxy :id)
-                                    (q/choose n))
-                              2000)]
+                                    (q/choose n))) 200)]
     (log/to :bootstrap "n: " n "\nnew-peers: " (seq new-peers))
       (let [net (net-root p)]
         (with-peer-graph p
@@ -88,7 +87,7 @@
 
 (defn bootstrap
   [p boot-url]
-  (let [booter (get-connection (:manager p) boot-url)
+  (let [booter (peer-connection p boot-url)
         root-id (with-peer-graph p (root-node))
         my-url (public-url (:port p))]
     (advertise booter root-id my-url)

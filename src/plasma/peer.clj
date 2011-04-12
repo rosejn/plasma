@@ -1,29 +1,21 @@
 (ns plasma.peer
   (:use [plasma config util core connection network presence rpc]
-        jiraph.graph
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
+            [jiraph.graph :as jiraph]
             [plasma.query :as q]))
 
 (defmacro with-peer-graph [p & body]
   `(let [g# (:graph ~p)]
      (locking g#
-     (if (= *graph* g#)
+     (if (= jiraph/*graph* g#)
        (do ~@body)
-       (with-graph g# ~@body)))))
+       (jiraph/with-graph g# ~@body)))))
 
 (defprotocol IQueryable
-  (ping
-    [this]
-    "Simple test function to check that the peer is available.")
-
-  (root
-    [this]
-    "Get the root node for this peer's graph.")
-
   ; TODO: change this to find-node once core and query are refactored...
-  (node-by-uuid
+  (get-node
     [this id]
     "Lookup a node by UUID.")
 
@@ -32,7 +24,7 @@
     "Create an edge from src to a new node with the given edge properties.")
 
   (query
-    [this q] [this q params] [this q params timeout]
+    [this q] [this q params]
     "Issue a query against the peer's graph.")
 
   (query-channel
@@ -84,15 +76,7 @@
   [manager graph port listener options] ; peer-id, port, max-peers
 
   IQueryable
-  (ping [_]
-        (log/to :peer "got ping...")
-        :pong)
-
-  (root
-    [this]
-    (with-peer-graph this (root-node)))
-
-  (node-by-uuid
+  (get-node
     [this id]
     (with-peer-graph this (find-node id)))
 
@@ -114,12 +98,6 @@
       (with-peer-graph this
                   (q/query plan params))))
 
-  (query
-    [this plan params timeout]
-    (binding [*manager* manager]
-      (with-peer-graph this
-                  (q/query plan params timeout))))
-
   (query-channel
     [this plan]
     (query-channel this plan {}))
@@ -127,14 +105,14 @@
   (query-channel
     [this plan params]
     (binding [*manager* manager]
-      (with-graph (:graph this)
-                  (q/query-channel plan params))))
+      (with-peer-graph this
+        (q/query-channel plan params))))
 
   (sub-query
     [this ch plan]
     (binding [*manager* manager]
       (with-peer-graph this
-                  (q/sub-query ch plan))))
+        (q/sub-query ch plan))))
 
   (recur-query
     [this pred q]
@@ -247,13 +225,9 @@
   "A general purpose rpc multimethod."
   (fn [peer req] (:method req)))
 
-(defmethod rpc-handler 'ping
+(defmethod rpc-handler 'get-node
   [peer req]
-  (ping peer))
-
-(defmethod rpc-handler 'node-by-uuid
-  [peer req]
-  (node-by-uuid peer (first (:params req))))
+  (get-node peer (first (:params req))))
 
 (defmethod rpc-handler 'query
   [peer req]
@@ -268,7 +242,6 @@
                 (doall res)
                 res)
           rpc-res (rpc-response req res)]
-      ;(log/to :peer "result: " rpc-res)
       (lamina/enqueue ch rpc-res))
     (catch Exception e
       (log/to :peer "error handling request!\n------------------\n"
@@ -293,7 +266,8 @@
   [peer con]
   (log/to :peer "handle-peer-connection new-connection: " (:url con))
 
-  (lamina/receive-all (lamina/filter* #(not (nil? %)) (:chan con))
+  (lamina/receive-all (lamina/filter* #(not (nil? %)) 
+                                      (lamina/fork (:chan con)))
     (fn [msg] (log/to :peer "incoming request: " msg)))
 
   (lamina/receive-all (request-channel con)
@@ -311,7 +285,7 @@
                              [(:manager options) options]
                              [(connection-manager)
                               (assoc options :internal-manager true)])
-         g (graph path)
+         g (open-graph path)
          listener (connection-listener manager port)
          p (PlasmaPeer. manager g port listener options)]
      (on-connect p (partial handle-peer-connection p))
@@ -319,36 +293,59 @@
        (setup-presence-listener p))
      p)))
 
-;TODO: Make these methods of a PeerConnection
+(defn peer-connection 
+  "Returns a connection to a remote peer reachable by url, using the local peer p's 
+  connection manager."
+  [p url]
+  (get-connection (:manager p) url))
 
-(defn peer-node
+(defn peer-get-node
   "Lookup a node by ID on a remote peer."
-  [con id & [timeout]]
-  (let [res-chan (request con 'node-by-uuid [id])]
-    (if timeout
-      (:result (lamina/wait-for-message res-chan timeout))
-      res-chan)))
+  [con id]
+  (let [res (lamina/constant-channel)]
+    (lamina/receive (request con 'get-node [id])
+                    #(lamina/enqueue res (:result %)))
+    res))
+
+(defn peer-link
+  [con src node-map edge-props])
 
 ; TODO: Return a result channel and enqueue an error if we fail
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
-  [con q & [timeout]]
+  [con q]
   (let [res-chan (request con 'query [q])]
     (lamina/receive-all (lamina/fork res-chan)
                         #(log/to :peer "peer-query result: " %))
-    (if timeout
-      (:result (lamina/wait-for-message res-chan timeout))
-      res-chan)))
+    (lamina/map* :result res-chan)))
+
+(defn peer-query-channel
+  [con q])
 
 (defn peer-sub-query
   [con q]
   (stream con 'sub-query [q]))
 
-(defn peer-ping
-  [con & [timeout]]
-  (lamina/wait-for-message (request con 'ping nil)
-                           (or timeout 2000)))
+(defn peer-recur-query
+  [con q])
+
+(defn peer-iter-n-query
+  [con q n])
+
+(defn wait-for
+  [chan timeout]
+  (lamina/wait-for-message chan timeout))
+
+(extend plasma.connection.Connection
+  IQueryable
+  {:get-node peer-get-node
+   :link peer-link
+   :query peer-query
+   :query-channel peer-query-channel
+   :sub-query peer-sub-query
+   :recur-query peer-recur-query
+   :iter-n-query peer-iter-n-query})
 
 (defmethod peer-sender "plasma"
   [url]
