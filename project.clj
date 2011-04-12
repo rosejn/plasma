@@ -10,3 +10,23 @@
                  [ring/ring-core "0.3.1"]
                  [org.bitlet/weupnp "0.1.2-SNAPSHOT"]])
 
+(import '[java.io File])
+(use '[clojure.java.io :only (delete-file)])
+
+(defn ls-files
+  [dir & [suffix]]
+  (let [in-dir (.list (File. dir))]
+    (if suffix
+      (let [re (re-pattern (str ".*." suffix))]
+        (filter #(re-matches  re %)
+                in-dir))
+      in-dir)))
+
+(deftask clean
+  "Remove log files and test databases."
+  (doseq [f (ls-files "./" "log")]
+    (println f)
+    (delete-file f))
+  (doseq [f (ls-files "db")]
+    (println delete-file f)
+    (delete-file f)))

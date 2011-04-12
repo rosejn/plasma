@@ -66,14 +66,13 @@
 
 (defn add-bootstrap-peers
   [p con n]
-  (let [new-peers (wait-for (query con (-> (q/path [peer [:net :peer]])
+  (let [new-peers (query con (-> (q/path [peer [:net :peer]])
                                     (q/project 'peer :proxy :id)
-                                    (q/choose n))) 200)]
+                                    (q/choose n)))]
     (log/to :bootstrap "n: " n "\nnew-peers: " (seq new-peers))
-      (let [net (net-root p)]
-        (with-peer-graph p
-          (doseq [{url :proxy id :id} new-peers]
-            (make-edge net (make-proxy-node id url) :peer)))))
+    (doseq [{url :proxy id :id} new-peers]
+      (unless (get-node p id)
+              (add-peer p id url))))
   (let [n-peers (first (query p (q/count*
                                   (q/path [:net :peer]))))]
     (log/to :bootstrap "n-peers: " n-peers)
