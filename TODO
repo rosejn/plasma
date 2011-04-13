@@ -1,5 +1,8 @@
-* PlasmaPeer should have a root-id method, public-url, and maybe some other
-helpers.
+* use query-channel as the core function for IQueryable, and then have local, remote, and sub-queries all use it underneath
+ - refactor sub-query generation not to use send-op
+
+* create a recur-query that will smartly be both local and remote
+depending on whether it gets a proxy node as a result
 
 * new peer connections should always send their URL as the first message so they
   can be correctly stored in the connection cache, otherwise we just have the

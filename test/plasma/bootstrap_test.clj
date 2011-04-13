@@ -27,7 +27,7 @@
           (bootstrap p strap-url)))
       (Thread/sleep (* 2.1 BOOTSTRAP-RETRY-PERIOD))
       (let [all-peers (query strapper (q/path [:net :peer]))
-            p-count (first (query (first peers) (q/count* (q/path [:net :peer])) 200))]
+            p-count (first (query (last peers) (q/count* (q/path [:net :peer])) 200))]
         (is (= n-peers (count all-peers)))
         (is (= N-BOOTSTRAP-PEERS p-count)))
       (finally

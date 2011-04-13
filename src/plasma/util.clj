@@ -30,8 +30,9 @@
   (System/currentTimeMillis))
 
 (defmacro unless
-  [expr form]
-  (list 'if expr nil form))
+  [expr & form]
+  `(when (not ~expr) 
+     ~@form))
 
 (defn regexp?
   [obj]

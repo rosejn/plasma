@@ -197,6 +197,13 @@
     :default
     (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
 
+(defn- visit [s id]
+  (dosync 
+    (ensure s)
+    (if (@s id)
+      false
+      (alter s conj id))))
+
 (defn traverse-op
 	"Uses the src-key to lookup a node ID from each PT in the in queue.
  For each source node traverse the edges passing the edge-predicate, and put
@@ -204,27 +211,29 @@
 	[id plan recv-chan src-key edge-predicate]
   (let [in  (channel)
         out (channel)
+        visited (ref #{})
         edge-pred-fn (predicate-fn edge-predicate)]
     (receive-all in
       (fn [pt]
         (when pt
-          (let [src-id (get pt src-key)
-                src-node (find-node src-id)]
-            (cond
-              (proxy-node? src-id)
-              (let [proxy (:proxy src-node)]
+          (let [src-id (get pt src-key)]
+            (when (visit visited src-id)
+              (let [src-node (find-node src-id)]
+                (cond
+                  (proxy-node? src-id)
+                  (let [proxy (:proxy src-node)]
                     (log/to :flow "[traverse] proxy:" proxy "[" src-id "]")
                     ; Send the remote-sub-query channel to the recv operator
                     (enqueue recv-chan
                              (remote-sub-query plan id src-id proxy)))
 
-              :default
-              (let [tgts (keys (get-edges src-id edge-pred-fn))]
-                (log/to :flow "[traverse] "
-                        src-id " - "
-                        edge-predicate " -> " tgts)
-                (siphon (apply channel (map #(assoc pt id %) tgts))
-                        out)))))))
+                  :default
+                  (let [tgts (keys (get-edges src-id edge-pred-fn))]
+                    (log/to :flow "[traverse] "
+                            src-id " - "
+                            edge-predicate " -> " tgts)
+                    (siphon (apply channel (map #(assoc pt id %) tgts))
+                            out)))))))))
 
     (on-closed in #(do
                      (log/to :op "[traverse] closed")
