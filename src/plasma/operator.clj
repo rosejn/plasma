@@ -13,17 +13,27 @@
 
 ;(log/channel :op :debug)
 (log/channel :flow :debug)    ; log values flowing through the operator graph
-(log/channel :close :flow) ; log operators closing their output channels
+;(log/channel :close :flow) ; log operators closing their output channels
 
 (defn- close-log
   [op chan]
   (on-closed chan #(log/format :close "[%s] closed" op)))
 
+(defn- trim-pt
+  [pt]
+  (if (map? pt)
+    (let [tr #(if (uuid? %)
+                (trim-id %)
+                %)]
+      (zipmap (map tr (keys pt))
+              (map tr (vals pt))))
+    pt))
+
 (defn- flow-log
   [op chan]
   (receive-all (fork chan)
     (fn [pt]
-      (log/format :flow "[%s] %s" op pt)))
+      (log/format :flow "[%s] %s" op (trim-pt pt))))
   (close-log op chan))
 
 (defn plan-op
@@ -72,38 +82,37 @@
   (let [recv-op  (first (filter #(= :receive (:type %)) (vals (:ops plan))))
         new-root (first (:deps recv-op))
         new-ops  (sub-query-ops plan new-root end-id)
-        ; connect a send op at the root
-        send-op (plan-op :send :deps [new-root])
-        s-id (:id send-op)
-
+        
         ; connect a new param op that will start the query at the source of the proxy node
         param-op (plan-op :parameter :args [start-node])
         p-id (:id param-op)
 
         ; hook the new param node up to the join that feeds the traversal we need to start at
-        _ (log/to :sub-query "[build-sub-query] end-id: " end-id "\nnew-ops: " new-ops)
+        #_ (log/to :sub-query "[build-sub-query] end-id: " end-id "\nnew-ops: " new-ops)
         end-join-op (first (filter #(and (= :join (:type %))
                                          (= end-id (second (:deps %))))
                                    (vals new-ops)))
-        _ (log/to :sub-query "[build-sub-query] end-join-op: " end-join-op)
+        #_ (log/to :sub-query "[build-sub-query] end-join-op: " end-join-op)
         new-join-op (assoc end-join-op
                            :deps [p-id (second (:deps end-join-op))])
-        _ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
+        #_ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
 
         ; and modify the traverse-op's src-key so it uses the new param node's value
         trav-op (get new-ops end-id)
         trav-op (assoc trav-op :args [p-id (second (:args trav-op))])
-        _ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
+        #_ (log/to :sub-query "[build-sub-query] new-join-op: " new-join-op)
 
         new-ops (assoc new-ops
                        (:id new-join-op) new-join-op
                        (:id trav-op) trav-op
-                       s-id send-op
                        p-id param-op)]
+    (log/to :sub-query "[build-sub-query]:\n"
+            (with-out-str
+              (doseq [[id op] new-ops]
+                (println (trim-id id)  ":" (:type op) (:args op)))))
     (assoc plan
-           :type :sub-query
            :id (uuid)
-           :root (:id send-op)
+           :root new-root
            :params {start-node p-id}
            :ops new-ops)))
 
@@ -418,13 +427,14 @@
 (defn project-op
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties."
-	[id left project-key props?]
+	[id left project-key props]
+  (log/format :flow "project-op[%s] props: %s" project-key props)
   (let [left-out (:out left)
-        out (map* (fn [pt]
-                    (let [node-id (get pt project-key)]
-                      (if props?
-                        (get pt node-id)
-                        node-id)))
+        out (map* (if (empty? props)
+                    (fn [pt] (get pt project-key))
+                    (fn [pt] 
+                      (let [m (get pt (get pt project-key))]
+                        (select-keys m props))))
                   left-out)]
     (on-closed left-out #(close out))
     (flow-log "project" out)

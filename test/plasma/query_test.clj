@@ -84,7 +84,6 @@
 (deftest sub-query-test
   (let [plan (path [synth [:music :synths :synth]])
         plan (project plan 'synth :label)
-        plan (append-send-node plan)
         res-chan (channel)]
     (sub-query res-chan plan)
     (is (= #{:kick :bass :snare :hat}

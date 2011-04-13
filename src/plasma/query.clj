@@ -210,7 +210,7 @@
         root-op (:root plan)
         proj-op (plan-op :project
                          :deps [root-op]
-                         :args [bind-op props?])]
+                         :args [bind-op properties])]
     (append-root-op plan proj-op)))
 
 (defn count*
@@ -512,15 +512,15 @@
 (defn query-channel
   "Issue a query to the currently bound graph, and return a channel
   representing the results."
-  [plan & [param-map]]
-;  (assert (query? plan))
-  (let [plan (with-result-project plan)
-        plan (optimize-plan plan)
-        tree (query-tree plan)
-        param-map (or param-map {})
-        res-chan (get-in (:ops tree) [(:root tree) :out])]
-    (run-query tree param-map)
-    res-chan))
+  ([plan]
+   (query-channel plan {}))
+  ([plan params]
+   (let [plan (optimize-plan plan)
+         tree (query-tree plan)
+         param-map (or params {})
+         res-chan (get-in (:ops tree) [(:root tree) :out])]
+     (run-query tree param-map)
+     res-chan)))
 
 ; 5 second maximum query time before timing out
 (def MAX-QUERY-TIME (* 5 1000))
@@ -532,7 +532,8 @@
   ([plan params]
    (query plan params MAX-QUERY-TIME))
   ([plan params timeout]
-   (query-result-seq (query-channel plan params) timeout)))
+   (let [plan (with-result-project plan)]
+     (query-result-seq (query-channel plan params) timeout))))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."
@@ -555,13 +556,13 @@
   "Attaches a destination channel (presumably a network channel) to
   all send operators and then executes a query so the results will be
   fed back to the result channel."
-  [ch plan & [param-map]]
-  (assert (sub-query? plan))
-  (let [plan (with-send-channel plan ch)
-        plan (optimize-plan plan)
-        tree (query-tree plan)]
-    (log/to :query "running sub-query: " (:id plan))
-    (run-query tree {})))
+  ([ch q]
+   (sub-query ch q {}))
+  ([ch q params]
+   (let [q (optimize-plan q)
+         res-chan (query-channel q params)]
+     (log/to :query "running sub-query: " (:id q))
+     (siphon res-chan ch))))
 
 ; find-node: by uuid
 ; find-edge: by uuid

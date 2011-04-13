@@ -32,11 +32,6 @@
     "Issue a query against the graph and return a channel onto which the
     results will be enqueued.")
 
-  (sub-query
-    [this ch q]
-    "Execute a sub-query against the peer's graph, streaming the results back
-    to the source of the sub-query.")
-
   (recur-query
     [this q] [this pred q] [this pred q params]
     "Recursively execute a query.")
@@ -110,12 +105,6 @@
     (binding [*manager* manager]
       (with-peer-graph this
         (q/query-channel q params))))
-
-  (sub-query
-    [this ch q]
-    (binding [*manager* manager]
-      (with-peer-graph this
-        (q/sub-query ch q))))
 
   (recur-query
     [this pred q]
@@ -258,10 +247,6 @@
   "A general purpose stream multimethod."
   (fn [peer ch req] (:method req)))
 
-(defmethod stream-handler 'sub-query
-  [peer ch req]
-  (apply sub-query peer ch (:params req)))
-
 (defmethod stream-handler 'query-channel
   [peer ch req]
   (log/to :peer "stream-handler query-channel: " req)
@@ -345,10 +330,6 @@
   ([con q params]
    (stream con 'query-channel [q params])))
 
-(defn peer-sub-query
-  [con q]
-  (stream con 'sub-query [q]))
-
 (defn peer-recur-query
   [con q])
 
@@ -361,11 +342,10 @@
    :link peer-link
    :query peer-query
    :query-channel peer-query-channel
-   :sub-query peer-sub-query
    :recur-query peer-recur-query
    :iter-n-query peer-iter-n-query})
 
 (defmethod peer-sender "plasma"
   [url]
-  (partial peer-sub-query (get-connection *manager* url)))
+  (partial peer-query-channel (get-connection *manager* url)))
 

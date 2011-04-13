@@ -71,7 +71,7 @@
                   :value 0.3}
         prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
         sel  (select-op (uuid) prop-load (:id t3) sel-pred)
-        proj (project-op (uuid) sel (:id t3) false)
+        proj (project-op (uuid) sel (:id t3) [])
         tree (assoc tree
               :sel sel
               :proj proj)]
@@ -84,7 +84,7 @@
   (let [tree (traverse-base)
         {:keys [p1 r1 t3]} tree
         agg  (aggregate-op (uuid) r1)
-        proj (project-op (uuid) agg (:id t3) false)
+        proj (project-op (uuid) agg (:id t3) [])
         tree (assoc tree
               :agg agg
               :proj proj)]
@@ -100,10 +100,10 @@
         {:keys [p1 j3 t3]} tree
         pl (property-op (uuid) j3 (:id t3) [:score])
         s-desc (sort-op (uuid) pl (:id t3) :score :desc)
-        proj-desc (project-op (uuid) s-desc (:id t3) false)
+        proj-desc (project-op (uuid) s-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)
         s-asc (sort-op (uuid) pl (:id t3) :score :asc)
-        proj-asc (project-op (uuid) s-asc (:id t3) false)
+        proj-asc (project-op (uuid) s-asc (:id t3) [])
         tree-asc (assoc tree :proj proj-asc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -116,7 +116,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         min-desc (min-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) min-desc (:id t3) false)
+        proj-desc (project-op (uuid) min-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -127,7 +127,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         max-desc (max-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) max-desc (:id t3) false)
+        proj-desc (project-op (uuid) max-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -138,7 +138,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         limit-desc (limit-op (uuid) j3 2)
-        proj-desc (project-op (uuid) limit-desc (:id t3) false)
+        proj-desc (project-op (uuid) limit-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -151,7 +151,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         choose-desc (choose-op (uuid) j3 2)
-        proj-desc (project-op (uuid) choose-desc (:id t3) false)
+        proj-desc (project-op (uuid) choose-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -173,7 +173,7 @@
                   :value 0.3}
         prop-load (property-op (uuid) j3 (:id t3) [(:property sel-pred)])
         sel (select-op (uuid) prop-load (:id t3) sel-pred)
-        proj (project-op (uuid) sel (:id t3) false)
+        proj (project-op (uuid) sel (:id t3) [])
         tree (assoc tree
                     :sel sel
                     :proj proj)]
@@ -186,7 +186,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         avg-desc (avg-op (uuid) j3 (:id t3) :score)
-        proj-desc (project-op (uuid) avg-desc (:id t3) false)
+        proj-desc (project-op (uuid) avg-desc (:id t3) [])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue (:in p1) ROOT-ID)
     (Thread/sleep 20)

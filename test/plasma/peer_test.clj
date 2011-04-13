@@ -5,7 +5,8 @@
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
-            [plasma.query :as q]))
+            [plasma.query :as q]
+            [jiraph.graph :as jiraph]))
 
 ;(log/file :peer "peer.log")
 ;(log/repl :peer)
@@ -45,14 +46,18 @@
 
       (let [con (get-connection manager (plasma-url "localhost" port))]
         (is (uuid? (:id (wait-for (get-node con ROOT-ID) 200))))
-        (let [q (q/path [synth [:music :synths :synth]]
-                  (where (>= (:score synth) 0.6)))
+        (let [q (q/path [s [:music :synths :synth]]
+                  (where (>= (:score s) 0.6)))
+              qp (-> q (q/project 's))
               lres (query local q)
-              res (query con q {} 1000)
-              chan-res (take 2
-                             (lamina/lazy-channel-seq
-                               (query-channel con q) 200))]
-          (is (= lres res chan-res))
+              res (query con q {} 100)
+              lchan (lamina/lazy-channel-seq
+                      (query-channel local qp) 
+                      100)
+              cchan (lamina/lazy-channel-seq
+                      (query-channel con qp) 
+                      100)]
+          (is (= lres res lchan cchan))
           (is (= 2 (count res)))
           (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con %) 200) 
                                                       res)))))))
@@ -64,22 +69,20 @@
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port     (+ 1000 (rand-int 10000))
-        manager  (connection-manager)
-        local    (peer "db/p1" {:port port :manager manager})
-        remote   (peer "db/p2" {:port (inc port) :manager manager})
-        remote-p (get-connection manager (plasma-url "localhost" (inc port)))]
+        local    (peer "db/p1" {:port port})
+        remote   (peer "db/p2" {:port (inc port)})]
     (try
       (reset-peer local)
       (reset-peer remote)
       ; Add a proxy node to the local graph pointing to the root of the remote
       ; graph.
-      (let [remote-root (wait-for (get-node remote-p ROOT-ID) 200)
+      (let [remote-root (get-node remote ROOT-ID)
             _ (log/to :peer "remote-root: " remote-root)
             net (first (query local (q/path [:net])))
             _ (log/to :peer "net: " net)
             peer-proxy (with-peer-graph local
                         (make-proxy-node (:id remote-root)
-                                    (plasma-url "localhost" (inc port))))
+                                    (plasma-url "localhost" (:port remote))))
             link (with-peer-graph local
                    (make-edge net peer-proxy :peer))]
 
@@ -87,14 +90,12 @@
         ; through the proxy node.
         (let [q (-> (q/path [synth [:net :peer :music :synths :synth]])
                   (q/project 'synth :label))
-              res (take 4 (query local q))]
-          (is (= #{:kick :bass :snare :hat}
-                 (set (map :label res))))
-          (comment println "res: " res)))
+              res (query local q)]
+          ;(println "res: " res)
+          (is (= #{:kick :bass :snare :hat} (set (map :label res))))))
       (finally
         (close local)
-        (close remote)
-        (clear-connections manager)))))
+        (close remote)))))
 
 (deftest many-proxy-node-test []
   (dosync (alter config* assoc

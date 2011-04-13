@@ -4,9 +4,12 @@
           [java.net InetAddress NetworkInterface]))
 
 (defn gateway* []
-  (let [discoverer (GatewayDiscover.)]
-    (.discover discoverer)
-    (.getValidGateway discoverer)))
+  (try
+    (let [discoverer (GatewayDiscover.)]
+      (.discover discoverer)
+      (.getValidGateway discoverer))
+    (catch java.io.IOException e
+      nil)))
 
 ; TODO: This is memoized so we don't wait for a nil gateway after already
 ; trying once.  There is probably a better way to do this, but for now it works...

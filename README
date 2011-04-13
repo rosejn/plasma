@@ -2,7 +2,18 @@ Plasma graph networking.
 
 == Setup
 
-Copy the script/cake file to somewhere on your PATH and then execute:
+Copy the script/cake file to somewhere on your PATH and then get the
+dependencies with:
 
-  $ cake
+  $ cake deps
 
+now you can run the unit tests with:
+
+  $ cake test
+
+
+== Usage:
+
+For now you'll have to see the unit tests.  See the peer-test for the high-level
+functionality.  Also the benchmark.* namespaces will hold small examples that
+could be useful for understanding basic functionality.
