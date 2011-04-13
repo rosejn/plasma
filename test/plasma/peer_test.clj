@@ -172,7 +172,8 @@
                      (let [root-id (root-node)]
                        (log/to :peer "root-id: " root-id)
                        (node-chain root-id 10 :foo)))
-            res-chan (iter-n-query local 10 (q/path [:foo]))]
+            res-chan (iter-n-query local 10 (-> (q/path [f [:foo]])
+                                              (q/project 'f)))]
           (is (= end-id
                  (first (lamina/channel-seq res-chan 200)))))
       (finally

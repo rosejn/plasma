@@ -22,10 +22,10 @@
                     (make-edge root-id (make-node) :net))))]
     (is (= 1 (count (query strapper (q/path [:net]) 200))))
     (try
-      (doall
-        (for [p peers]
-          (bootstrap p strap-url)))
-      (Thread/sleep (* 2.1 BOOTSTRAP-RETRY-PERIOD))
+      (doseq [p peers]
+        (Thread/sleep 20)
+        (bootstrap p strap-url))
+      (Thread/sleep (* 2.3 BOOTSTRAP-RETRY-PERIOD))
       (let [all-peers (query strapper (q/path [:net :peer]))
             p-count (first (query (last peers) (q/count* (q/path [:net :peer])) 200))]
         (is (= n-peers (count all-peers)))
