@@ -271,6 +271,7 @@
                        Missing either a binding or a path operator.")))
         paths (vec (map vec (partition 2 bindings)))
         plan {:type :query
+              :id (uuid)
               :root nil    ; root operator id
               :params {}   ; param-name -> parameter-op
               :ops {}      ; id         -> operator
@@ -450,6 +451,7 @@
   "Convert a query plan into a query execution tree."
   [plan]
   {:type :query-tree
+   :id (:id plan)
    :ops (build-query plan)
    :root (:root plan)
    :params (:params plan)})
@@ -487,8 +489,12 @@
   (unless *graph*
     (throw (Exception. "Cannot run a query without binding a graph.
 \nFor example:\n\t(with-graph G (query q))\n")))
-  (log/to :query "run-query params: " (:params tree)
-          "\nparam-map: " param-map)
+  (log/format :flow "[run-query] query: %s
+                    query-params: %s
+                    input-params: %s" 
+              (trim-id (:id tree)) 
+              (keys (:params tree)) 
+              param-map)
   (doseq [[param-name param-id] (:params tree)]
     (let [param-val (if (contains? param-map param-name)
                       (get param-map param-name)

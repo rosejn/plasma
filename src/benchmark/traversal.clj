@@ -7,7 +7,7 @@
 
 (defn criss-cross-graph []
   (let [root (root-node)
-        [a b c d e f g h] (repeatedly 8 make-node)]
+        [a b c d e f g h] (repeatedly 8 #(make-node {:value (rand)}))]
     (make-edge root a :a)
     (make-edge root b :a)
     (make-edge a c :b)
@@ -25,7 +25,10 @@
       (with-peer-graph p
         (clear-graph)
         (criss-cross-graph))
-      (query p (q/path [:a :b :c :d :e]))
+      (query p (-> (q/path [c [:a :b :c]
+                            v [c :d :e]]
+                     (where (> (:value v) 0.1)))
+                 (q/project 'v :value)))
       (finally
         (close p)))))
 

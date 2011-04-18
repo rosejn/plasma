@@ -82,7 +82,7 @@
   (let [recv-op  (first (filter #(= :receive (:type %)) (vals (:ops plan))))
         new-root (first (:deps recv-op))
         new-ops  (sub-query-ops plan new-root end-id)
-        
+
         ; connect a new param op that will start the query at the source of the proxy node
         param-op (plan-op :parameter :args [start-node])
         p-id (:id param-op)
@@ -111,7 +111,6 @@
               (doseq [[id op] new-ops]
                 (println (trim-id id)  ":" (:type op) (:args op)))))
     (assoc plan
-           :id (uuid)
            :root new-root
            :params {start-node p-id}
            :ops new-ops)))
@@ -125,7 +124,7 @@
   [plan end-id start-id url]
   (let [sub-query (build-sub-query plan start-id end-id)
         sender (peer-sender url)]
-    (log/to :op "sending remote-sub-query: " (:id sub-query))
+    (log/to :flow "[remote-sub-query]" (:id sub-query))
     ;(log/to :op "[remote-sub-query] sub-query: " sub-query)
     (sender sub-query)))
 
@@ -207,7 +206,7 @@
     (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
 
 (defn- visit [s id]
-  (dosync 
+  (dosync
     (ensure s)
     (if (@s id)
       false
@@ -231,16 +230,16 @@
                 (cond
                   (proxy-node? src-id)
                   (let [proxy (:proxy src-node)]
-                    (log/to :flow "[traverse] proxy:" proxy "[" src-id "]")
+                    (log/format :flow "[traverse] [%s] proxy: %s " (trim-id src-id) proxy)
                     ; Send the remote-sub-query channel to the recv operator
                     (enqueue recv-chan
                              (remote-sub-query plan id src-id proxy)))
 
                   :default
                   (let [tgts (keys (get-edges src-id edge-pred-fn))]
-                    (log/to :flow "[traverse] "
-                            src-id " - "
-                            edge-predicate " -> " tgts)
+                    (log/format :flow "[traverse] %s - %s -> [%s]" 
+                                src-id edge-predicate (apply str (interleave (map trim-id tgts)
+                                                                             (cycle " "))))
                     (siphon (apply channel (map #(assoc pt id %) tgts))
                             out)))))))))
 
@@ -432,7 +431,7 @@
   (let [left-out (:out left)
         out (map* (if (empty? props)
                     (fn [pt] (get pt project-key))
-                    (fn [pt] 
+                    (fn [pt]
                       (let [m (get pt (get pt project-key))]
                         (select-keys m props))))
                   left-out)]

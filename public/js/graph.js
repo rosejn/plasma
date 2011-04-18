@@ -107,7 +107,15 @@ var plasma = null;
       draw_node: function(ctx, node, pt) {
         // determine the box size and round off the coords if we'll be 
         // drawing a text label (awful alignment jitter otherwise...)
-        var label = "" + (node.data.label || node.name.substring("5, 9"));
+        var label = "";
+        if (node.label) {
+          label = node.data.label;
+        } else if (node.name && is_uuid(node.name)) {
+          label = node.name.substring(5, 9);
+        } else {
+          label = node.name
+        }
+
         var width = ctx.measureText(label).width + 12;
         var height = 18;
         pt.x = Math.floor(pt.x)
@@ -117,7 +125,7 @@ var plasma = null;
         var fill = "rgb(40, 40, 40)";
         if(plasma.graph.renderer.selected_node == node.name) {
           fill = "red";
-        } 
+        }
 
         // Rectangle centered at point pt
         ctx.save();
@@ -212,17 +220,9 @@ var plasma = null;
   }    
 
 	var setup_graph = function() {
-    var model = arbor.ParticleSystem({repulsion: 800, stiffness: 600, friction: 0.7, fps: 2});
+    var model = arbor.ParticleSystem({repulsion: 800, stiffness: 600, friction: 0.1, fps: 2});
     model.parameters({gravity:true}); // center-gravity to make the graph settle
     model.renderer = graph_renderer("#graph-view");
-
-    /*
-    model.addEdge('a','b');
-    model.addEdge('a','c');
-    model.addEdge('a','d');
-    model.addEdge('a','e');
-    model.addNode('f', {alone:true, mass:.25});
-    */
 
     // or, equivalently:
     //
@@ -324,8 +324,9 @@ var plasma = null;
           node = {id: id, edges: []};
         }
 
+        node.isExpanded = false;
         this.graph.addNode(id, node);
-        this.add_node_edges(node);
+        //this.add_node_edges(node);
       },
 
       find_node: function(id, handler) {
@@ -341,20 +342,10 @@ var plasma = null;
         }
       },
 
-      expand_node: function(id, handler) {
-        console.log("expanding node: " + id);
-        this.find_node(id, function(node) {
-          //jQuery.each(node.edges, function(prop, val) {
-          //  console.log("[expand_node] edge - " + prop + ": " + val);
-          //});
-          if(node) {
-            plasma.add_node(node.id, node);
-
-            if(handler) {
-              handler(node);
-            }
-          }
-        });
+      expand_node: function(node) {
+        var edges = node.edges;
+        node.isExpanded = true;
+        add_node_edges(node);
       },
 
       show_node: function(n) {
@@ -381,13 +372,12 @@ var plasma = null;
             plasma.clear_graph();
             plasma.add_node(result);
             plasma.show_node(result);
-            plasma.expand_node(result);
           } else if (result.type == "node") {
             var node = result;
             plasma.clear_graph();
-            plasma.add_node(node.id, node);
+            var n = plasma.add_node(node.id, node);
+            n._fixed = true;
             plasma.show_node(result);
-            plasma.expand_node(result);
           }
         });
       },
@@ -396,9 +386,9 @@ var plasma = null;
     graph_model.renderer.on_node_clicked( function(node) {
       console.log("clicked: " + node.name);
       plasma.show_object(node);
-      if(is_uuid(node.name)) {
-        plasma.expand_node(node.name, plasma.show_node);
-      }
+      if(is_uuid(node.name) && !node.isExpanded) {
+        client.find_node(node.name, client.expand_node); 
+      };
     });
 
 		return client;

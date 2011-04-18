@@ -1,18 +1,18 @@
 (ns plasma.web
   (:use [ring.middleware file file-info]
-        [lamina.core :exclude (restart)]
         [aleph formats http tcp]
         [plasma core config util connection peer]
         [clojure.contrib json]
         [clojure stacktrace])
-  (:require [logjam.core :as log]))
+  (:require [logjam.core :as log]
+            [lamina.core :as lamina]))
 
 ; Remember: must be set in javascript client also.
 (def WEB-PORT 4242)
 
-(defn- rpc-handler
+(defn- web-rpc-handler
   [p req]
-  (log/to :web "rpc-handler: " req)
+  (log/to :web "web-rpc-handler: " req)
   (let [res
         (case (:method req)
           "query"
@@ -33,9 +33,9 @@
     (try
       (let [request (read-json msg true)
             _ (log/to :web "request: " request)
-            res (rpc-handler p request)]
+            res (web-rpc-handler p request)]
         (log/to :web "Result: " res)
-        (enqueue ch (json-str res)))
+        (lamina/enqueue ch (json-str res)))
       (catch Exception e
         (log/to :web "Request Exception: " e)
         (log/to :web "Trace: " (with-out-str (print-stack-trace e)))))))
@@ -55,10 +55,10 @@
 (defn- server [p ch request]
   (log/to :web "client connect: " (str request))
   (if (:websocket request)
-    (receive-all ch (partial request-handler p ch))
+    (lamina/receive-all ch (partial request-handler p ch))
     (if-let [sync-response (sync-app request)]
-      (enqueue ch sync-response)
-      (enqueue ch {:status 404 :body "Page Not Found"}))))
+      (lamina/enqueue ch sync-response)
+      (lamina/enqueue ch {:status 404 :body "Page Not Found"}))))
 
 (defn web-interface
   "Start a web interface for the give peer.
