@@ -21,7 +21,9 @@
 (deftest path-query-test
   (is (= #{:kick :bass :snare :hat}
          (set (map #(:label (find-node %))
-                   (query (path [:music :synths :synth])))))))
+                   (query (path [:music :synths :synth]))))
+         (set (map #(:label (find-node %))
+                   (query (path [ROOT-ID :music :synths :synth])))))))
 
 (deftest where-query-test
   (let [q (path [s [:music :synths :synth]]

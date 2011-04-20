@@ -9,7 +9,13 @@
   [])
 
 (defn random-walk-n
-  [])
+  [p n]
+  (iterate n
+    (fn [start]
+      (let [q (-> (q/path [p [start :net :peer]])
+                 (q/project 'p :id :proxy)
+                 (q/choose 1))]
+      (query p )))))
 
 (defn greedy-iter
   [])
@@ -23,7 +29,7 @@
   (let [a (id-bits a n-bits)
         b (id-bits b n-bits)
         max-n (expt 2 n-bits)]
-    (mod (+ (- b a) 
+    (mod (+ (- b a)
             max-n)
          max-n)))
 
@@ -49,7 +55,7 @@
           (recur (assoc cp :con (peer-connection p (:proxy cp))))
           closest)))))
 
-(defn dht-join 
+(defn dht-join
   "Find peers with the addrs that fit in the slots of our peer table.
    The addrs closest to power of 2 distances from our ID
 

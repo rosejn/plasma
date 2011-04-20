@@ -79,7 +79,7 @@
          (get pbind start)]
 
       ; starting with the UUID of a node starts at that node"
-      (node-exists? :graph start)
+      (uuid? start)
       (let [root-op (plan-op :parameter
                              :args [start])]
         [root-op (:id root-op)]))))
@@ -250,19 +250,32 @@
   [q]
   (let [[bindings body]
         (cond
-          (and (vector? (first q))  ; (path [:a :b :c])
-               (keyword? (ffirst q))) (let [res (gensym 'result)]
-                                        [(vector res (first q)) (list res)])
+          (and (vector? (first q))  ; (path [:a :b :c]) or (path [node-uuid :b :c])
+               (or (keyword? (ffirst q))
+                   (uuid? (ffirst q))
+                   (symbol? (ffirst q))))
+          (let [res (gensym 'result)]
+            [(vector res (first q)) (list res)])
 
           (and (vector? (first q))  ; (path [foo [:a :b :c]])
-               (vector? (second (first q)))) [(first q) (rest q)]
+               (vector? (second (first q)))
+               (or (keyword? (first (second (first q))))
+                   (uuid? (first (second (first q))))
+                   (symbol? (first (second (first q))))))
+          [(first q) (rest q)]
 
           (symbol? (ffirst q)) [[] q]
           :default (throw
                      (Exception.
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
-        paths (vec (map vec (partition 2 bindings)))
+        paths (partition 2 bindings)
+        paths (map (fn [[b path]]
+                     [b (map #(if (symbol? %)
+                                (var-get (resolve %))
+                                %)
+                             path)])
+                   paths)
         plan {:type :query
               :id (uuid)
               :root nil    ; root operator id
@@ -521,8 +534,7 @@
      (run-query tree param-map)
      res-chan)))
 
-; 5 second maximum query time before timing out
-(def MAX-QUERY-TIME (* 5 1000))
+(def MAX-QUERY-TIME (* 3 1000)) ; in ms
 
 (defn query
   "Issue a query to the currently bound graph."

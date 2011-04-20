@@ -65,11 +65,11 @@
       (bootstrap p strap-url))))
 
 (defn bootstrapped-peers
-  [n-peers]
+  [ids]
   (let [port (+ 5000 (rand-int 5000))
         strapper (bootstrap-peer "db/strapper" {:port port})
         strap-url (plasma-url "localhost" port)
-        peers (make-peers n-peers (inc port)
+        peers (make-peers ids (inc port)
                 (fn [i]
                   (clear-graph)
                     (make-edge ROOT-ID (make-node) :net)))]
