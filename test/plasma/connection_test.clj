@@ -1,6 +1,6 @@
 (ns plasma.connection-test
   (:use clojure.test
-        [plasma config util connection rpc])
+        [plasma config util url connection rpc])
   (:require [logjam.core :as log]
             [lamina.core :as lamina]))
 
@@ -26,39 +26,47 @@
     (try
       (dotimes [i 300]
         (refresh-connection manager (MockConnection.
-                                    (str "tcp://plasma.org:" i)))
+                                    (url "plasma" "plasma.org" i)))
         (is (<= (connection-count manager)
                 (config :connection-cache-limit))))
       (finally
         (clear-connections manager)))))
 
-(deftest connection-rpc-test
+(defn rpc-test
+  [proto port]
   (let [manager (connection-manager)
-        listener (connection-listener manager 1234)]
+        listener (connection-listener manager proto port)]
     (try
       (on-connect listener
-        (fn [con]
-          (let [requests (request-channel con)]
-            (lamina/receive-all requests
-              (fn [[ch req]]
-                (let [val (* 2 (first (:params req)))
-                      res (rpc-response req val)]
-                  (lamina/enqueue ch res)))))))
+                  (fn [con]
+                    (log/to :con "new connection: " con)
+                    (let [requests (request-channel con)]
+                      (lamina/receive-all requests
+                                          (fn [[ch req]]
+                                            (log/to :con "got request: " req)
+                                            (let [val (* 2 (first (:params req)))
+                                                  res (rpc-response req val)]
+                                              (lamina/enqueue ch res)))))))
 
-        (let [client (get-connection manager (plasma-url "localhost" 1234))]
-          (dotimes [i 20]
-            (let [res-chan (request client 'foo [i])
-                  res (lamina/wait-for-message res-chan 100)]
-              (is (= (* 2 i) (:result res)))))
-          (is (zero? (count (:chan client))))
-          (close client))
+      (let [client (get-connection manager (url proto "localhost" port))]
+        (dotimes [i 20]
+          (let [res-chan (request client 'foo [i])
+                res (lamina/wait-for-message res-chan 100)]
+            (is (= (* 2 i) (:result res)))))
+        (is (zero? (count (:chan client))))
+        (close client))
       (finally
         (close listener)
         (clear-connections manager)))))
 
-(deftest connection-event-test
+(deftest connection-rpc-test
+  (rpc-test "plasma" 1234)
+  (rpc-test "uplasma" 1234))
+
+(defn event-test
+  [proto port]
   (let [manager (connection-manager)
-        listener (connection-listener manager 1234)]
+        listener (connection-listener manager proto port)]
     (try
       (let [events (atom [])]
         (on-connect listener
@@ -66,7 +74,7 @@
             (lamina/receive-all (event-channel con)
               (fn [event]
                 (swap! events conj event)))))
-        (let [client (get-connection manager (plasma-url "localhost" 1234))]
+        (let [client (get-connection manager (url proto "localhost" port))]
           (dotimes [i 20]
             (send-event client 'foo [:a :b :c]))
           (close client))
@@ -76,9 +84,14 @@
         (close listener)
         (clear-connections manager)))))
 
-(deftest connection-stream-test
+(deftest connection-event-test
+  (event-test "plasma" 1234)
+  (event-test "uplasma" 1234))
+
+(defn stream-test
+  [proto port]
   (let [manager (connection-manager)
-        listener (connection-listener manager 1234)]
+        listener (connection-listener manager proto port)]
     (try
       (on-connect listener
         (fn [con]
@@ -89,7 +102,7 @@
                                   (fn [v]
                                     (lamina/enqueue s-chan (inc v))))))))
 
-        (let [client (get-connection manager (plasma-url "localhost" 1234))
+        (let [client (get-connection manager (url proto "localhost" port))
               s-chan (stream client 'foo [1])
               res (atom nil)]
           (lamina/receive s-chan #(lamina/enqueue s-chan (inc %)))
@@ -104,3 +117,6 @@
         (close listener)
         (clear-connections manager)))))
 
+(deftest connection-stream-test
+  (stream-test "plasma" 1234)
+  (stream-test "uplasma" 1234))

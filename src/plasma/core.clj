@@ -1,8 +1,8 @@
 (ns plasma.core
   (:use
-    [plasma util config]
+    [plasma util config url]
     [lamina core]
-    [aleph tcp formats]
+    [aleph formats]
     [jiraph graph]
     [clojure.contrib.core :only (dissoc-in)]))
 
@@ -17,7 +17,7 @@
 
 (defmulti peer-sender
   (fn [url]
-    (:proto (url-map url))))
+    (keyword (:proto (url-map url)))))
 
 (declare find-node)
 

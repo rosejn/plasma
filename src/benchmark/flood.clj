@@ -43,12 +43,16 @@
       (println "peer values: " (query base (-> (q/path [p [:net :peer]
                                            d [p :data]])
                                 (q/project 'd :value))))
-      (println "tier two: " (query base (-> (q/path [d [:net :peer :net :peer :data]])
-                             (q/project 'd :value))))
+      (println "tier two: " 
+        (sort (map :value 
+             (query base 
+                    (-> 
+                      (q/path [d [:net :peer :net :peer :data]])
+                      (q/project 'd :value))))))
       (finally
         (close-peers peers)))))
 
-;(comment
+(comment
 (def peers (flood-peers))
 (def base (first peers))
 (close-peers peers)

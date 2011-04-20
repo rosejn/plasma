@@ -1,5 +1,5 @@
 (ns plasma.peer-test
-  (:use [plasma config util core connection peer]
+  (:use [plasma url config util core connection peer]
         test-utils
         clojure.test
         clojure.stacktrace)
@@ -12,11 +12,10 @@
 ;(log/repl :peer)
 
 (deftest get-node-test
-  (let [p (peer "db/p1" {:port 1234})
-        manager (:manager p)]
+  (let [p (peer "db/p1" {:port 1234})]
     (try
-      (let [client (get-connection manager (plasma-url "localhost" 1234))]
-        (dotimes [i 2]
+      (let [client (get-connection (connection-manager) (plasma-url "localhost" 1234))]
+        (dotimes [i 4]
           (let [res-chan (get-node client ROOT-ID)
                 res (wait-for res-chan 1000)]
             (is (uuid? (:id res)))))
@@ -30,11 +29,23 @@
     (clear-graph)
     (test-graph)))
 
+(defn simple-query-test []
+  (let [port (+ 10000 (rand-int 10000))
+        p (peer "db/p1" {:port port})
+        con (get-connection (connection-manager) (plasma-url "localhost" port))
+        q (q/path [:music :synths :synth])]
+    (try
+      (reset-peer p)
+      (is (= 4 (count (query con q {} 200))))
+      (finally
+        (close con)
+        (close p)))))
+
 (deftest peer-query-test []
   (dosync (alter config* assoc
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
-  (let [port (+ 1000 (rand-int 10000))
+  (let [port (+ 10000 (rand-int 10000))
         local (peer "db/p1" {:port port})
         root-id (:id (get-node local ROOT-ID))
         manager (:manager local)]
@@ -50,16 +61,16 @@
                   (where (>= (:score s) 0.6)))
               qp (-> q (q/project 's))
               lres (query local q)
-              res (query con q {} 100)
+              res (query con q {} 200)
               lchan (lamina/lazy-channel-seq
-                      (query-channel local qp) 
+                      (query-channel local qp)
                       100)
               cchan (lamina/lazy-channel-seq
-                      (query-channel con qp) 
+                      (query-channel con qp)
                       100)]
           (is (= lres res lchan cchan))
           (is (= 2 (count res)))
-          (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con %) 200) 
+          (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con %) 200)
                                                       res)))))))
       (finally
         (close local)))))

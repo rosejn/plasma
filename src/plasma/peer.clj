@@ -68,7 +68,7 @@
 (def DEFAULT-HTL 50)
 
 (defrecord PlasmaPeer
-  [manager graph port listener options] ; peer-id, port, max-peers
+  [manager graph port listener status options] ; peer-id, port, max-peers
 
   IQueryable
   (get-node
@@ -93,7 +93,7 @@
   (query
     [this q params timeout]
     (binding [*manager* manager]
-      (with-peer-graph this 
+      (with-peer-graph this
         (q/query q params timeout))))
 
   (query-channel
@@ -203,8 +203,9 @@
   (close
     [this]
     (close listener)
-    (if (:internal-manager options)
-      (clear-connections manager))))
+    (when (:internal-manager options)
+      (clear-connections manager))
+    (reset! status :closed)))
 
 ; TODO: FIX ME.  register-connection needs a channel and a url
 (defn- setup-presence-listener
@@ -268,7 +269,7 @@
   [peer con]
   (log/to :peer "handle-peer-connection new-connection: " (:url con))
 
-  (lamina/receive-all (lamina/filter* #(not (nil? %)) 
+  (lamina/receive-all (lamina/filter* #(not (nil? %))
                                       (lamina/fork (:chan con)))
     (fn [msg] (log/to :peer "incoming request: " msg)))
 
@@ -288,15 +289,16 @@
                              [(connection-manager)
                               (assoc options :internal-manager true)])
          g (open-graph path)
-         listener (connection-listener manager port)
-         p (PlasmaPeer. manager g port listener options)]
+         listener (connection-listener manager (config :protocol) port)
+         status (atom :running)
+         p (PlasmaPeer. manager g port listener status options)]
      (on-connect p (partial handle-peer-connection p))
      (when (:presence options)
        (setup-presence-listener p))
      p)))
 
-(defn peer-connection 
-  "Returns a connection to a remote peer reachable by url, using the local peer p's 
+(defn peer-connection
+  "Returns a connection to a remote peer reachable by url, using the local peer p's
   connection manager."
   [p url]
   (get-connection (:manager p) url))
@@ -345,7 +347,7 @@
    :recur-query peer-recur-query
    :iter-n-query peer-iter-n-query})
 
-(defmethod peer-sender "plasma"
+(defmethod peer-sender :default
   [url]
   (partial peer-query-channel (get-connection *manager* url)))
 

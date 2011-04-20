@@ -2,17 +2,6 @@
   (:require [lamina.core :as lamina])
   (:import (java.util.concurrent Executors TimeUnit)))
 
-(defn plasma-url
-  [host port]
-  (str "plasma://" host ":" port))
-
-(defn url-map [url]
-  (let [match (re-find #"(.*)://([a-zA-Z-_.]*):([0-9]*)" url)
-        [_ proto host port] match]
-    {:proto proto
-     :host host
-     :port (Integer. port)}))
-
 (defn uuid
   "Creates a random, immutable UUID object that is comparable using the '=' function."
   [] (str "UUID:" (. java.util.UUID randomUUID)))
@@ -31,7 +20,7 @@
 
 (defmacro unless
   [expr & form]
-  `(when (not ~expr) 
+  `(when (not ~expr)
      ~@form))
 
 (defn regexp?

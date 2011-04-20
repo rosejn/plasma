@@ -169,13 +169,6 @@
       plan
       flat-preds)))
 
-(defn- append-root-op
-  [{ops :ops :as plan} {id :id :as op}]
-  (log/to :query "append-root-op: " plan op)
-  (assoc plan
-         :root id
-         :ops (assoc ops id op)))
-
 (defn- load-props
   "Add a property loading operator to the query plan to add property
   values to the run-time path-map for downstream operators to utilize.
@@ -491,9 +484,9 @@
 \nFor example:\n\t(with-graph G (query q))\n")))
   (log/format :flow "[run-query] query: %s
                     query-params: %s
-                    input-params: %s" 
-              (trim-id (:id tree)) 
-              (keys (:params tree)) 
+                    input-params: %s"
+              (trim-id (:id tree))
+              (keys (:params tree))
               param-map)
   (doseq [[param-name param-id] (:params tree)]
     (let [param-val (if (contains? param-map param-name)

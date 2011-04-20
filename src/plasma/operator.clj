@@ -45,6 +45,12 @@
    :deps (vec deps)
    :args (vec args)})
 
+(defn append-root-op
+  [{ops :ops :as plan} {id :id :as op}]
+  (assoc plan
+         :root id
+         :ops (assoc ops id op)))
+
 (defn operator-deps-zip [plan start-id end-id]
   (let [ops (:ops plan)]
     (zip/zipper
@@ -80,7 +86,8 @@
   "Generates a sub-query plan from the "
   [plan start-node end-id]
   (let [recv-op  (first (filter #(= :receive (:type %)) (vals (:ops plan))))
-        new-root (first (:deps recv-op))
+        ;new-root (first (:deps recv-op))
+        new-root (:id recv-op)
         new-ops  (sub-query-ops plan new-root end-id)
 
         ; connect a new param op that will start the query at the source of the proxy node
@@ -121,8 +128,8 @@
   src-node-id.  It sends the sub-query to the remote peer, and returns a channel
   that will receive the stream of path-tuple results from the execution of the
   sub-query."
-  [plan end-id start-id url]
-  (let [sub-query (build-sub-query plan start-id end-id)
+  [plan end-op-id start-node-id url]
+  (let [sub-query (build-sub-query plan start-node-id end-op-id)
         sender (peer-sender url)]
     (log/to :flow "[remote-sub-query]" (:id sub-query))
     ;(log/to :op "[remote-sub-query] sub-query: " sub-query)
@@ -237,7 +244,7 @@
 
                   :default
                   (let [tgts (keys (get-edges src-id edge-pred-fn))]
-                    (log/format :flow "[traverse] %s - %s -> [%s]" 
+                    (log/format :flow "[traverse] %s - %s -> [%s]"
                                 src-id edge-predicate (apply str (interleave (map trim-id tgts)
                                                                              (cycle " "))))
                     (siphon (apply channel (map #(assoc pt id %) tgts))

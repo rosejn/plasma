@@ -1,5 +1,5 @@
 (ns plasma.network
-  (:use [plasma util])
+  (:use [plasma url])
   (import [org.bitlet.weupnp GatewayDiscover PortMappingEntry]
           [java.net InetAddress NetworkInterface]))
 

@@ -1,6 +1,6 @@
 (ns plasma.connection
-  (:use [aleph object]
-        [plasma config util presence rpc])
+  (:use [aleph object udp]
+        [plasma core config util url presence rpc])
   (:require [logjam.core :as log]
 						[lamina.core :as lamina]))
 
@@ -65,6 +65,10 @@
     res-chan))
 
 (defn- wrapped-stream-channel
+  "Given a channel and a stream-id, returns one side of a channel pair
+  that can be used to communicate with a matched stream channel on the
+  other side.  Allows for multiplexing many streams over one socket
+  channel."
   [chan id]
   (let [s-in-chan (lamina/map* #(:msg %)
                                (lamina/filter* #(= id (:id %))
@@ -139,14 +143,67 @@
     [this]
     (lamina/close chan)))
 
-(defn- make-connection
-  "Returns a *new* connection to the peer listening at URL."
+(defmulti connection-channel
+  "Returns a channel representing a network connection to the peer listening at URL."
+  (fn [url] (keyword (:proto (url-map url)))))
+
+(defmethod connection-channel :plasma
   [url]
   (let [{:keys [proto host port]} (url-map url)
         client (object-client {:host host :port port})
         chan   (lamina/wait-for-result client *connection-timeout*)]
-    (Connection. url chan)))
+    chan))
 
+(def BASE-UDP-PORT 10000)
+
+(defn try-with-meta
+  "Returns obj with the meta-data m if possible, otherwise just returns
+  obj unmodified."
+  [obj m]
+  (if (isa? (type obj) clojure.lang.IObj)                   
+    (with-meta obj m)
+    obj))
+
+(defmethod connection-channel :uplasma
+  [url]
+  (let [in-port (+ BASE-UDP-PORT (rand-int 20000))
+        udp-chan @(udp-object-socket {:port in-port})
+        {:keys [proto host port]} (url-map url)
+        [inner outer] (lamina/channel-pair)]
+    (log/to :con "[udp-connection] connecting to:" url)
+
+    (lamina/receive-all (lamina/fork udp-chan)
+      (fn [msg] (log/to :con "[udp-con] MSG: " msg "\n\n")))
+
+    (lamina/siphon 
+      (lamina/map* (fn [obj] 
+                     (let [msg {:message (str obj) :host host :port port}]
+                       (log/to :con "[udp-con] sending msg: " msg)
+                       msg))
+                   outer)
+      udp-chan)
+
+    (lamina/siphon 
+      (lamina/map* (fn [msg] 
+                     (log/to :con "[udp-con] received:" msg)
+                     (try-with-meta (read-string (:message msg))
+                                    (dissoc msg :message)))
+                   udp-chan)
+      outer)
+
+    (lamina/on-closed inner #(do
+                               (log/to :con "[udp-con] closed!")
+                               (lamina/close udp-chan)))
+    inner))
+
+(defn- make-connection
+  [url]
+  (let [chan (connection-channel url)]
+    (lamina/receive-all (lamina/fork chan)
+                 (fn [msg]
+                   (log/to :con "[make-connection] msg: " msg)))
+
+    (Connection. url chan)))
 
 (defprotocol IConnectionCache
   "A general purpose PeerConnection cache."
@@ -280,17 +337,79 @@
     (server)
     (lamina/close chan)))
 
+(defmulti make-listener
+  "Create a network socket listener that will call the 
+    (handler chan client-info)
+  for each incoming connection."
+  (fn [proto port handler]
+    (keyword proto)))
+
+(defmethod make-listener :plasma
+  [proto port handler]
+  (start-object-server handler {:port port}))
+
+(defmethod make-listener :uplasma
+  [proto port handler]
+  (let [known-hosts (ref #{})
+        udp-chan @(udp-object-socket {:port port})]
+    (log/to :con "[udp listener] listening on port: " port)
+    (lamina/receive-all (lamina/fork udp-chan)
+                 (fn [msg] (log/to :con "[udp listener] MSG: " msg "\n\n")))
+
+    (log/to :con "[udp listener] setting up receivers...")
+    (lamina/receive-all udp-chan
+      (fn [msg]
+        (log/to :con "[udp listener] top------------------")
+        (let [host-key (select-keys msg [:host :port])
+              new-host? (boolean 
+                          (dosync
+                            (if ((ensure known-hosts) host-key)
+                              false
+                              (alter known-hosts conj host-key))))]
+          (log/to :con "[udp listener] new?:" new-host? " msg: " msg)
+          (when new-host?
+            (let [[inner outer] (lamina/channel-pair)]
+
+              (log/to :con "[udp listener] setup incoming")
+              ; incoming messages with the same host/port go to the outer channel
+              (lamina/siphon 
+                (lamina/map* 
+                  (fn [msg] (try-with-meta (read-string (:message msg)) 
+                                           (dissoc msg :message)))
+                  (lamina/filter* 
+                    (fn [{:keys [host port]}] (= host-key {:host host :port port}))
+                    udp-chan))
+                  outer)
+
+              (log/to :con "[udp listener] setup outgoing")
+              ; messages enqueued on inner get wrapped as udp "packets" and sent
+              ; to the socket channel
+              (lamina/siphon 
+                (lamina/map* 
+                  (fn [obj]
+                    (log/to :con "[udp listener] sending: " 
+                            (assoc host-key :message obj))
+                    (assoc host-key :message (str obj)))
+                  outer)
+                udp-chan)
+
+              (lamina/enqueue outer (try-with-meta (read-string (:message msg))
+                                               (dissoc msg :message)))
+              (handler inner host-key))))))
+    #(lamina/close udp-chan)))
+
 (defn connection-listener
   "Listen on a port for incoming connections, automatically registering them."
-  [manager port]
+  [manager proto port]
   (let [connect-chan (lamina/channel)
-        s (start-object-server
-            (fn [chan client-info]
-              (let [addr (:remote-addr client-info)
-                    url (plasma-url (.getHostName addr) (.getPort addr))
-                    con (register-connection manager url chan)]
-                (log/to :con "listener new connection: " url con)
-                (lamina/enqueue connect-chan con)))
-            {:port port})]
-    (ConnectionListener. s port (lamina/filter* #(not (nil? %)) connect-chan))))
+        listener (make-listener 
+                   proto port
+                   (fn [chan client-info]
+                     (log/to :con "handling new connection: " client-info)
+                     (let [{:keys [host port]} client-info 
+                           url (url proto host port)
+                           con (register-connection manager url chan)]
+                       (log/to :con "listener new connection: " url con)
+                       (lamina/enqueue connect-chan con))))]
+    (ConnectionListener. listener port connect-chan)))
 

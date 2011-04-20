@@ -1,5 +1,5 @@
 (ns test-utils
-  (:use [plasma core config util operator connection peer bootstrap]
+  (:use [plasma core config util url operator connection peer bootstrap]
         [clojure test stacktrace])
   (:require [lamina.core :as lamina]
             [jiraph.graph :as jiraph]))
