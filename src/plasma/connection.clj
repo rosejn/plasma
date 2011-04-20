@@ -75,7 +75,15 @@
                                   (type-channel chan :stream)))
         wrap-chan (lamina/channel)
         [snd-chan rcv-chan] (lamina/channel-pair)]
-    (lamina/siphon s-in-chan rcv-chan)
+    (lamina/on-closed snd-chan
+      (fn [] (lamina/enqueue chan {:type :stream :id id :msg :closed})))
+
+    (lamina/receive-all s-in-chan
+      (fn [msg]
+        (if (= :closed msg)
+          (lamina/close snd-chan)
+          (lamina/enqueue rcv-chan msg))))
+
     (lamina/siphon (lamina/map* (fn [msg]
                     {:type :stream
                      :id id

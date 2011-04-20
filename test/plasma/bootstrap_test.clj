@@ -23,7 +23,6 @@
     (is (= 1 (count (query strapper (q/path [:net]) 200))))
     (try
       (doseq [p peers]
-        (Thread/sleep 20)
         (bootstrap p strap-url))
       (Thread/sleep (* 2.3 BOOTSTRAP-RETRY-PERIOD))
       (let [all-peers (query strapper (q/path [:net :peer]))

@@ -252,7 +252,8 @@
   [peer ch req]
   (log/to :peer "stream-handler query-channel: " req)
   (let [res-chan (apply query-channel peer (:params req))]
-    (lamina/siphon res-chan ch)))
+    (lamina/siphon res-chan ch)
+    (lamina/on-drained res-chan #(lamina/close ch))))
 
 (defn- stream-request-handler
   [peer [ch req]]
