@@ -1,13 +1,10 @@
 (ns plasma.query-test
-  (:use [plasma util core operator query viz]
+  (:use [plasma util core operator query url]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
         test-utils)
   (:require [logjam.core :as log]))
-
-;(log/console :query)
-;(log/file :query "query.log")
 
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
@@ -15,27 +12,31 @@
         tree (query-tree plan)]
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
-           (set (map #(:label (find-node %))
+           (set (map (comp :label find-node :id)
                      (query-results tree)))))))
 
 (deftest path-query-test
-  (is (= #{:kick :bass :snare :hat}
-         (set (map #(:label (find-node %))
-                   (query (path [:music :synths :synth]))))
-         (set (map #(:label (find-node %))
-                   (query (path [ROOT-ID :music :synths :synth])))))))
+  (let [res (query (path [:music :synths :synth]))
+        res2 (query (path [ROOT-ID :music :synths :synth]))
+        synths (:id (first (query (path [:music :synths]))))
+        _ (println "synths: " synths)
+        res3 (query (path [synths :synth]))]
+    (println "synths: " synths)
+    (println "res3: " res3)
+    (is (apply = #{:kick :bass :snare :hat}
+               (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))))
 
 (deftest where-query-test
   (let [q (path [s [:music :synths :synth]]
                 (where (> (:score s) 0.3)))
-        q2 (project q 's :label)]
-    (is (every? uuid? (query q)))
+        q2 (project q [s :label])]
+    (is (every? uuid? (map :id (query q))))
     (is (= #{:kick :bass :snare}
            (set (map :label (query q2))))))
   (let [p (-> (path [sesh [:sessions :session]
-                 synth [sesh :synth]]
+                     synth [sesh :synth]]
                 (where (= (:label synth) :kick)))
-            (project 'sesh :label))]
+            (project [sesh :label]))]
     (is (= #{:red-pill :take-six}
            (set (map :label (query p)))))))
 
@@ -44,17 +45,17 @@
                  synth [sesh :synth]]
                 (where (= (:label synth) :kick)))]
     (is (false? (has-projection? p)))
-    (is (true? (has-projection? (project p 'sesh :label))))))
+    (is (true? (has-projection? (project p [sesh :label]))))))
 
 (deftest project-test
   (let [q (-> (path [synth [:music :synths :synth]])
-            (project 'synth :label))
+            (project [synth :label]))
         q2 (-> (path [synth [:music :synths :synth]])
-             (project 'synth))]
+             (project synth))]
     (is (= #{:kick :bass :snare :hat}
            (set (map :label (query q)))))
     (is (= #{:kick :bass :snare :hat}
-           (set (map (comp :label find-node) (query q2)))))))
+           (set (map (comp :label find-node :id) (query q2)))))))
 
 (deftest count-test
   (let [q (count* (limit (path [synth [:music :synths :synth]])
@@ -85,7 +86,7 @@
 
 (deftest sub-query-test
   (let [plan (path [synth [:music :synths :synth]])
-        plan (project plan 'synth :label)
+        plan (project plan [synth :label])
         res-chan (channel)]
     (sub-query res-chan plan)
     (is (= #{:kick :bass :snare :hat}
@@ -96,7 +97,7 @@
   (let [plan (-> (path [sesh [:sessions :session]
                         synth [sesh :synth]]
                    (where (= (:label synth) :kick)))
-               (project 'sesh :label))
+               (project [sesh :label]))
         tree (query-tree plan)
         optimized (optimize-plan plan)
         opt-tree (query-tree optimized)]

@@ -68,7 +68,7 @@
 (def DEFAULT-HTL 50)
 
 (defrecord PlasmaPeer
-  [manager graph port listener status options] ; peer-id, port, max-peers
+  [manager graph url port listener status options] ; peer-id, port, max-peers
 
   IQueryable
   (get-node
@@ -182,7 +182,7 @@
                                               :msg :htl-reached})
 
                              :default
-                             (let [res (lamina/channel-seq res-chan)
+                             (let [res (map :id (lamina/channel-seq res-chan))
                                    params (assoc (:iter-params plan) ROOT-ID res)
                                    plan (assoc plan :iter-params params)]
                                (log/to :peer "--------------------\n"
@@ -272,7 +272,7 @@
 
   (lamina/receive-all (lamina/filter* #(not (nil? %))
                                       (lamina/fork (:chan con)))
-    (fn [msg] (log/to :peer "incoming request: " msg)))
+    (fn [msg] (log/to :peer "incoming msg:" msg)))
 
   (lamina/receive-all (request-channel con)
                       (partial request-handler peer))
@@ -280,19 +280,25 @@
                       (partial stream-request-handler peer)))
 
 (defn peer
-  "Create a new peer using a graph database located at path, optionally
-  specifying the port number to listen on."
-  ([path] (peer path {}))
-  ([path options]
+  "Create a new peer.  
+  
+  Available options:
+    :path => path to persistent peer graph (database)
+    :port => specify port number to listen on"
+  ([] (peer {}))
+  ([options]
    (let [port (get options :port (config :peer-port))
          [manager options] (if (:manager options)
                              [(:manager options) options]
                              [(connection-manager)
                               (assoc options :internal-manager true)])
-         g (open-graph path)
+         g (if-let [path (:path options)]
+             (open-graph path)
+             (open-graph))
          listener (connection-listener manager (config :protocol) port)
          status (atom :running)
-         p (PlasmaPeer. manager g port listener status options)]
+         url (public-url port)
+         p (PlasmaPeer. manager g url port listener status options)]
      (on-connect p (partial handle-peer-connection p))
      (when (:presence options)
        (setup-presence-listener p))
@@ -315,6 +321,13 @@
 (defn peer-link
   [con src node-map edge-props])
 
+(defn peer-query-channel
+  ([con q]
+   (peer-query-channel con q {}))
+  ([con q params]
+   (log/to :peer "[peer-query-channel] starting query: " (:id q))
+   (stream con 'query-channel [q params])))
+
 ; TODO: Return a result channel and enqueue an error if we fail
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
@@ -324,15 +337,15 @@
   ([con q params]
    (peer-query con q params q/MAX-QUERY-TIME))
   ([con q params timeout]
-   (wait-for (lamina/map* :result (request con 'query [q params]))
-               timeout)))
+   (let [q (q/with-result-project q)
+         rchan (query-channel con q params)
+         res (promise)]
+     (lamina/on-closed rchan
+                       #(deliver res (lamina/channel-seq rchan))
+                       #(log/to :close "[peer-query] closed"))
+     @res)))
 
-(defn peer-query-channel
-  ([con q]
-   (peer-query-channel con q {}))
-  ([con q params]
-   (stream con 'query-channel [q params])))
-
+     ;(lamina/channel-seq rchan timeout)
 (defn peer-recur-query
   [con q])
 

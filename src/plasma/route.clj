@@ -1,5 +1,5 @@
 (ns plasma.route
-  (:use [plasma core util connection peer digest]
+  (:use [plasma core util connection peer digest url]
         [clojure.contrib.math :only (expt)])
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
@@ -9,13 +9,21 @@
   [])
 
 (defn random-walk-n
+  "Starting at peer p, do an n hop random walk, returning {:id :proxy} maps 
+  from all the peers traversed."
   [p n]
-  (iterate n
-    (fn [start]
-      (let [q (-> (q/path [p [start :net :peer]])
-                 (q/project 'p :id :proxy)
-                 (q/choose 1))]
-      (query p )))))
+  (map first
+       (take n
+             (drop 1
+                   (iterate
+                     (fn [[_ g]]
+                       (let [q (->
+                                 (q/path [peer [:net :peer]])
+                                 (q/project 'peer :id :proxy)
+                                 (q/choose 1))
+                             res (first (query g q))]
+                         [res (peer-connection p (:proxy res))]))
+                     [nil p])))))
 
 (defn greedy-iter
   [])

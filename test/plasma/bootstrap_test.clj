@@ -17,7 +17,7 @@
         peers (make-peers n-peers (inc port)
                 (fn [i]
                   (clear-graph)
-                  (let [root-id (root-node)]
+                  (let [root-id (root-node-id)]
                     (node-assoc root-id :peer-id i)
                     (make-edge root-id (make-node) :net))))]
     (is (= 1 (count (query strapper (q/path [:net]) 200))))
@@ -40,7 +40,7 @@
 (def peers (make-peers 2 2223
                 (fn [i]
                   (clear-graph)
-                  (let [root-id (root-node)]
+                  (let [root-id (root-node-id)]
                     (node-assoc root-id :peer-id i)
                     (make-edge root-id (make-node) :net)))))
 
@@ -48,6 +48,6 @@
 (bootstrap (first peers) (plasma-url "localhost" 2234))
 (peer-query con (-> (q/path [peer [:net :peer]])
                                   (q/choose N-BOOTSTRAP-PEERS)
-                                  (q/project 'peer [:proxy :id]))
+                                  (q/project [peer :proxy :id]))
                               500)
   )

@@ -1,5 +1,5 @@
 (ns plasma.query
-  (:use [plasma util core operator]
+  (:use [plasma util core operator url]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -59,8 +59,8 @@
 (defn- path-start-src
   "Determines the starting operator for a single path component,
   returning the start-op and rest of the path."
-  [plan jbind path]
-  (let [start (first path)
+  [plan jbind path-seg]
+  (let [start (first path-seg)
         {:keys [pbind ops]} plan]
     (log/to :query "path-start-src: " start " -> " (get jbind start))
     (cond
@@ -110,13 +110,13 @@
   "Takes a traversal-plan and a single [bind-name [path ... segment]] pair and
   adds the traversal to the plan.
   "
-  [[plan jbind] [bind-name path]]
-  (log/to :query "path: " path)
-;  (log/to :query "ops: " (map :op (vals (:ops plan))))
-  (let [[start-op src-key] (path-start-src plan jbind path)
-        path (if (keyword? (first path))
-               path (next path))
-        [root-op-id path-ops] (path-plan src-key start-op path)
+  [[plan jbind] [bind-name segment]]
+  (log/to :query "path: " segment)
+  (let [[start-op src-key] (path-start-src plan jbind segment)
+        segment (if (keyword? (first segment))
+                  segment
+                  (next segment))
+        [root-op-id path-ops] (path-plan src-key start-op segment)
         root-op               (get path-ops root-op-id)
         ops                   (merge (:ops plan) path-ops)
         _ (log/to :query "root-op: " root-op)
@@ -180,31 +180,42 @@
                          :args [bind-op properties])]
     (append-root-op plan prop-op)))
 
-(defn project
-  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
-
-  (let [q (path [people [:app :social :friends]])]
-    ...
-
-    ; get the UUIDs of people nodes
-    (project q 'people)
-
-    ; get the given set of props for each person node
-    (project 'people :name :email :age))
-
-  "
-  [plan bind-sym & properties]
-  (log/to :query "[project] bind-sym: " bind-sym)
-  (let [props? (not (empty? properties))
-        plan (if props?
-               (load-props plan bind-sym properties)
-               plan)
-        bind-op (get (:pbind plan) bind-sym)
+(defn project*
+  [plan args]
+  (let [projections (map #(if (symbol? %) [%] %) args)
+        _ (log/to :query "[project] projections:" (seq projections))
+        plan (reduce
+               (fn [plan [bind-sym & properties]]
+                 (if (not (empty? properties))
+                   (load-props plan bind-sym properties)
+                   plan))
+               plan projections)
         root-op (:root plan)
+        projections (doall (map (fn [[bind-sym & props]]
+                           (let [project-key (get (:pbind plan) bind-sym)]
+                             (if props
+                               (concat [project-key] props)
+                               [project-key])))
+                      projections))
         proj-op (plan-op :project
                          :deps [root-op]
-                         :args [bind-op properties])]
+                         :args [projections])]
     (append-root-op plan proj-op)))
+
+(defmacro project
+  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
+
+  (let [q (path [person [:app :social :friends]])]
+    ...
+
+    ; get the UUIDs of person nodes
+    (project q person)
+
+    ; get the given set of props for each person node
+    (project [person :name :email :age]))
+  "
+  [plan & args]
+  `(plasma.query/project* ~plan (quote ~args)))
 
 (defn count*
   [{root :root :as plan}]
@@ -247,36 +258,8 @@
 (defn path*
   "Helper function to 'parse' a path expression and generate an initial
   query plan."
-  [q]
-  (let [[bindings body]
-        (cond
-          (and (vector? (first q))  ; (path [:a :b :c]) or (path [node-uuid :b :c])
-               (or (keyword? (ffirst q))
-                   (uuid? (ffirst q))
-                   (symbol? (ffirst q))))
-          (let [res (gensym 'result)]
-            [(vector res (first q)) (list res)])
-
-          (and (vector? (first q))  ; (path [foo [:a :b :c]])
-               (vector? (second (first q)))
-               (or (keyword? (first (second (first q))))
-                   (uuid? (first (second (first q))))
-                   (symbol? (first (second (first q))))))
-          [(first q) (rest q)]
-
-          (symbol? (ffirst q)) [[] q]
-          :default (throw
-                     (Exception.
-                       "Invalid path expression:
-                       Missing either a binding or a path operator.")))
-        paths (partition 2 bindings)
-        paths (map (fn [[b path]]
-                     [b (map #(if (symbol? %)
-                                (var-get (resolve %))
-                                %)
-                             path)])
-                   paths)
-        plan {:type :query
+  [paths body]
+  (let [plan {:type :query
               :id (uuid)
               :root nil    ; root operator id
               :params {}   ; param-name -> parameter-op
@@ -292,8 +275,40 @@
       (selection-ops)
       (parameterized))))
 
-(defmacro path [& args]
-  `(path* (quote ~args)))
+(defmacro path [& q]
+  (let [[bindings body]
+        (cond
+          (and (vector? (first q))  ; [:a :b :c] or [node-uuid :b :c]
+               (not (vector? (second (first q)))))
+          (let [res (gensym 'result)]
+            [(vector res (first q)) (list res)])
+
+          (and (vector? (first q))  ; [doc [:apps :docs :doc]]
+               (vector? (second (first q))))
+          [(first q) (rest q)]
+
+          (symbol? (ffirst q)) [[] q]
+          :default (throw
+                     (Exception.
+                       "Invalid path expression:
+                       Missing either a binding or a path operator.")))
+        paths (partition 2 bindings)
+        paths (vec (second 
+                     (reduce
+                       (fn [[known-syms new-paths] [bsym path-segs]] 
+                         #_(println "known: " known-syms "bsym: " bsym "psegs: " path-segs)
+                         (let [sym `'~bsym
+                               known-syms (conj known-syms bsym)
+                               segs (vec (map 
+                                           (fn [seg]
+                                             (if (known-syms seg)
+                                               `'~seg
+                                               `~seg)) path-segs))
+                               new-paths (conj new-paths [sym segs])]
+                           [known-syms new-paths])) 
+                       [#{} []]
+                       paths)))]
+    `(path* ~paths (quote ~body))))
 
 (defn query?
   [q]
@@ -357,6 +372,7 @@
 
         ; create new version of op downstream from moving op old parent as input op
         op-down (downstream-op-node plan op-id)
+        _ (log/to :optimize "[reparent-op] [" op-id "] op-down: " op-down)
         new-ops (if (= (:root plan) op-id)
                   new-ops
                   (let [new-op-down (replace-input-op op-down op-id parent-op-id)]
@@ -402,7 +418,7 @@
   [plan ops recv-chan op-node]
   (let [{:keys [type id deps args]} op-node
         deps-ops (map ops deps)
-        _ (log/format :op-node "[op-node] type: %s\nid: %s\ndeps: %s\nargs: %s " type id deps args)
+        _ (log/format :op-node "type: %s\nid: %s\ndeps: %s\nargs: %s " type id deps args)
         op-name (symbol (str (name type) "-op"))
         op-fn (ns-resolve 'plasma.operator op-name)]
     (case type
@@ -420,6 +436,8 @@
 
       (apply op-fn id (first deps-ops) args))))
 
+(def MAX-OPS 500)
+
 (defn- op-dep-list
   "Returns a sorted operator dependency list. (Starting at the leaves of the tree
   where the operators have no dependencies and iterating in towards the root.)"
@@ -427,17 +445,23 @@
   (let [ops (vals (:ops plan))
         leaves (filter #(empty? (:deps %)) ops)]
     (loop [sorted (vec leaves)
-           others (set/difference (set ops) (set leaves))]
-      (if (empty? others)
+           others (set/difference (set ops) (set leaves))
+           counter 0]
+      (if (or (empty? others)
+              (= counter MAX-OPS))
         sorted
         (let [sort-set (set (map :id sorted))
+              ;_ (println "sort-set: " sort-set)
               next-level (filter #(set/subset? (set (:deps %))
                                                sort-set)
                                  others)
+              ;_ (println "next-level: " next-level)
               sorted (concat sorted next-level)]
+              ;(println "sorted:" sorted)
           (recur
             sorted
-            (set/difference others (set sorted))))))))
+            (set/difference others (set sorted))
+            (inc counter)))))))
 
 (defn- build-query
   "Iterate over the query operators, instantiating each one after its dependency
@@ -485,7 +509,7 @@
     (let [bind-sym (if (= 1 (count (:pbind plan)))
                      (ffirst (:pbind plan))
                      (first (last (:paths plan))))]
-            (project plan bind-sym))))
+            (project* plan [bind-sym]))))
 
 ; Query execution is initiated by loading parameters into param-op
 ; operator nodes.

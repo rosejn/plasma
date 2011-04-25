@@ -9,11 +9,11 @@
 
 (defn- tree-vecs* [q root]
   (let [{:keys [id type deps args]} (get (:ops q) root)
-        label (case (:type root)
-                :traverse (str "tr " (second args))
-                :parameter (str "pr \"" (first args) "\"")
+        label (case type
+                :traverse (str (second args))
+                :parameter (str (first args))
                 (name type))
-        label (str label " [" (apply str (take 4 (drop 5 id))) "]")]
+        label (str label " [" (trim-id id) "]")]
     (apply vector label (map (partial tree-vecs* q) deps))))
 
 (defn- tree-vecs [q]
@@ -26,22 +26,27 @@
 
 (defn- dot-id
   [id]
-  (apply str "ID_" (take 4 (drop 5 id))))
+  (trim-id id))
+;  (apply str "ID_" (take 4 (drop 5 id))))
 
 (defn- dot-edge
   [src tgt props]
   (let [label (name (:label props))]
-    (println "\t\t" src " -> " tgt "[label=\"" label "\"];")))
+    (println (str "\t\"" src "\" -> \"" tgt "\" [label=\"" label "\"];"))))
 
 (defn- dot-node
   [id]
   (let [n (find-node id)
         d-id (dot-id id)
         edges (get-edges id)
-        label (or (:label n) d-id)]
-    (println (str "\t" d-id " [label=\"" label "\"];"))
-    (doseq [[tgt-id props] edges]
-      (dot-edge d-id (dot-id tgt-id) props))))
+        label (or (:label n) d-id)
+        label (if (keyword? label)
+                (name label)
+                label)]
+    (unless (empty? edges)
+            (println (str "\t\"" d-id "\" [label=\"" label "\"];"))
+            (doseq [[tgt-id props] edges]
+              (dot-edge d-id (dot-id tgt-id) props)))))
 
 (defn- dot-graph
   "Output the dot (graphviz) graph description for the given graph."
@@ -49,8 +54,11 @@
   (with-graph g
     (let [nodes (node-ids :graph)]
       (with-out-str
-        (println "digraph G {\n\tnode [shape=plaintext]")
-        (doseq [n nodes]
+        (println "digraph G {\n")
+        (println "\tnode [shape=doublecircle]")
+        (dot-node (root-node-id))
+        (println "\tnode [shape=circle]")
+        (doseq [n (filter #(not (= (root-node-id) %)) nodes)]
           (dot-node n))
         (println "}")))))
 
@@ -58,24 +66,32 @@
   [g path]
   (spit path (dot-graph g)))
 
+(defn- label-table
+  [top bottom]
+  (str "<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\">\n\t"
+       "<TR><TD><FONT POINT-SIZE=\"24\">" top "</FONT></TD></TR>\n"
+       "<TR><TD><FONT POINT-SIZE=\"18\">" bottom "</FONT></TD></TR>\n"
+       "</TABLE>>"))
+
 (defn- dot-op
   [{:keys [id type args]}]
   (let [label (case type
-                :traverse (str "traverse: [" (second args) "]")
-                :parameter (str "param: " (if (uuid? (first args))
-                                            (apply str (drop 5 (first args)))
-                                            (first args)))
-                (name type))]
-        (str "\t" (dot-id id) " [label=\"" label "\"]")))
+                :traverse (label-table "traverse" (second args))
+                :parameter (label-table "parameter"
+                                (if (uuid? (first args))
+                                  (trim-id (first args)) 
+                                  (first args)))
+                (str "\"" (name type) "\""))]
+        (str "\t\"" (dot-id id) "\" [label=" label "]")))
 
 (defn- dot-plan
   [plan]
   (with-out-str
-    (println "digraph Plan {\n\tnode [shape=plaintext]")
+    (println "digraph Plan {\n\tnode [shape=Mrecord]")
     (doseq [[id op] (:ops plan)]
       (println (dot-op op))
       (doseq [edge (:deps op)]
-        (println (str "\t" (dot-id id) " -> " (dot-id edge)))))
+        (println (str "\t\"" (dot-id id) "\" -> \"" (dot-id edge) "\""))))
     (println "}")))
 
 (defn save-dot-plan

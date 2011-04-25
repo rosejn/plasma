@@ -4,10 +4,10 @@
   (:require [lamina.core :as lamina]
             [jiraph.graph :as jiraph]))
 
-(def G (open-graph "test/db"))
+(def G (open-graph "db/test"))
 
 (defn test-graph []
-  (let [root-id (root-node)]
+  (let [root-id (root-node-id)]
     (with-nodes! [net      :net
                   music    :music
                   synths   :synths
@@ -65,11 +65,11 @@
       (bootstrap p strap-url))))
 
 (defn bootstrapped-peers
-  [ids]
+  [n]
   (let [port (+ 5000 (rand-int 5000))
         strapper (bootstrap-peer "db/strapper" {:port port})
         strap-url (plasma-url "localhost" port)
-        peers (make-peers ids (inc port)
+        peers (make-peers n (inc port)
                 (fn [i]
                   (clear-graph)
                     (make-edge ROOT-ID (make-node) :net)))]

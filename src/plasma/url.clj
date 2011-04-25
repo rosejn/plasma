@@ -12,7 +12,7 @@
   (url (config :protocol) host port))
 
 (defn url-map [url]
-  (let [match (re-find #"(.*)://([a-zA-Z-_.]*):([0-9]*)" url)
+  (let [match (re-find #"(.*)://([0-9a-zA-Z-_.]*):([0-9]*)" url)
         [_ proto host port] match]
     {:proto proto
      :host host

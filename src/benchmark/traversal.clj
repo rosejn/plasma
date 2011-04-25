@@ -6,7 +6,7 @@
             [plasma.query :as q]))
 
 (defn criss-cross-graph []
-  (let [root (root-node)
+  (let [root (root-node-id)
         [a b c d e f g h] (repeatedly 8 #(make-node {:value (rand)}))]
     (make-edge root a :a)
     (make-edge root b :a)
@@ -23,12 +23,15 @@
   (let [p (peer "db/p1" {:port 1234})]
     (try
       (with-peer-graph p
-        (clear-graph)
-        (criss-cross-graph))
-      (query p (-> (q/path [c [:a :b :c]
-                            v [c :d :e]]
-                     (where (> (:value v) 0.1)))
-                 (q/project 'v :value)))
-      (finally
-        (close p)))))
+                       (clear-graph)
+                       (criss-cross-graph))
+      (save-dot-graph (:graph p) "output/criss_cross_graph.dot")
+      (let [q (-> (q/path [c [:a :b :c]
+                           v [c :d :e]]
+                          (where (> (:value v) 0.1)))
+                (q/project [v :value]))]
+        (save-dot-plan q "output/criss_cross_plan.dot")
+        (query p q {} 300))
+        (finally
+          (close p)))))
 

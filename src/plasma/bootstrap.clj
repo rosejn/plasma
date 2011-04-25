@@ -10,14 +10,14 @@
   [p]
   (with-peer-graph p
     (clear-graph)
-    (let [root (root-node)]
+    (let [root (root-node-id)]
       (make-edge root (make-node) :net))))
 
 (defn- peer-urls
   [p]
   (with-peer-graph p
     (q/query (-> (q/path [peer [:net :peer]])
-               (q/project 'peer :url)))))
+               (q/project [peer :url])))))
 
 (defn- have-peer?
   [p url]
@@ -26,18 +26,14 @@
 (defn- net-root
   [p]
   (with-peer-graph p
-    (first (q/query (q/path [:net])))))
+    (:id (first (q/query (q/path [:net]))))))
 
-(defn- add-peer
+(defn add-peer
   [p id url]
-  (log/to :bootstrap "add-peer: " id url)
-  (with-peer-graph p 
+  (with-peer-graph p
     (let [prx (make-proxy-node id url)
           net (net-root p)]
-      (log/to :bootstrap "proxy: " prx "net: " net)
-      (make-edge net prx :peer)
-      (log/to :bootstrap "new-net: " (find-node net)
-              "\nnew-proxy: " (find-node prx)))))
+      (make-edge net prx :peer))))
 
 (defn- advertise-handler
   [p con event]
@@ -54,9 +50,9 @@
 (defn bootstrap-peer
   "Returns a peer that will automatically add new peers to its graph at
   [:net :peer] when they connect."
-  ([path] (bootstrap-peer path {}))
-  ([path options]
-   (let [p (peer path options)]
+  ([] (bootstrap-peer {}))
+  ([options]
+   (let [p (peer options)]
      (setup-peer-graph p)
      (on-connect p (partial bootstrap-connect-handler p))
      p)))
@@ -67,7 +63,7 @@
 (defn add-bootstrap-peers
   [p con n]
   (let [new-peers (query con (-> (q/path [peer [:net :peer]])
-                                    (q/project 'peer :proxy :id)
+                                    (q/project [peer :proxy :id])
                                     (q/choose n)))]
     (log/to :bootstrap "n: " n "\nnew-peers: " (seq new-peers))
     (doseq [{url :proxy id :id} new-peers]
@@ -87,7 +83,7 @@
 (defn bootstrap
   [p boot-url]
   (let [booter (peer-connection p boot-url)
-        root-id (with-peer-graph p (root-node))
+        root-id (with-peer-graph p (root-node-id))
         my-url (public-url (:port p))]
     (advertise booter root-id my-url)
     (handle-peer-connection p booter)

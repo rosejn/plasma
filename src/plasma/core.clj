@@ -3,7 +3,7 @@
     [plasma util config url]
     [lamina core]
     [aleph formats]
-    [jiraph graph]
+    [jiraph graph mem-layer]
     [clojure.contrib.core :only (dissoc-in)]))
 
 ; Special uuid used to query for a graph's root node.
@@ -32,7 +32,7 @@
   [uuid]
   (get-incoming :graph uuid))
 
-(defn root-node
+(defn root-node-id
   "Get the UUID of the root node of the graph."
   []
   (:root (meta *graph*)))
@@ -49,7 +49,9 @@
    (make-node (uuid) {}))
   ([arg]
    (if (map? arg)
-     (make-node (uuid) arg)
+     (if (:id arg)
+       (make-node (:id arg) arg)
+       (make-node (uuid) arg))
      (make-node arg {})))
   ([id props]
    (add-node! :graph id :id id props)
@@ -81,7 +83,7 @@
   "
   [src tgt label-or-props]
   (let [src (if (= ROOT-ID src)
-              (root-node)
+              (root-node-id)
               src)
         props (cond
                 (keyword? label-or-props) {:label label-or-props}
@@ -116,7 +118,7 @@
     (throw (Exception. "Cannot find-node without a bound graph.
 For example:\n\t(with-graph G (find-node id))\n")))
   (let [uuid (if (= uuid ROOT-ID)
-               (root-node)
+               (root-node-id)
                uuid)]
     (if-let [node (get-node :graph uuid)]
       (assoc node
@@ -131,8 +133,10 @@ For example:\n\t(with-graph G (find-node id))\n")))
 
 (defn open-graph
   "Open a graph database located at path, creating it if it doesn't already exist."
-  [path]
-  (let [g {:graph (layer path)}]
+  [& [path]]
+  (let [g (if path
+            {:graph (layer path)}
+            {:graph (mem-layer)})]
     (with-graph g
       (let [meta (find-node (config :meta-id))
             meta (if meta

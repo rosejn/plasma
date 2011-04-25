@@ -13,7 +13,7 @@
 
 ;(log/channel :op :debug)
 (log/channel :flow :debug)    ; log values flowing through the operator graph
-;(log/channel :close :flow) ; log operators closing their output channels
+(log/channel :close :flow) ; log operators closing their output channels
 
 (defn- close-log
   [op chan]
@@ -163,6 +163,7 @@
         left-out (:out left)
         sub-chans (atom [])
         all-closed (fn []
+                     (log/to :close "[receive] sub-chan closed")
                      (when (and (closed? left-out)
                               (every? closed? @sub-chans))
                        (close out)))]
@@ -196,7 +197,7 @@
     (flow-log "send" out)
     (on-closed left-out
       #(do
-         (log/to :op "[send] closed...")
+         (log/to :close "[send] closed")
          (close dest))))
   {:type :send
    :id id
@@ -433,20 +434,27 @@
 (defn project-op
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties."
-	[id left project-key props]
-  (log/format :flow "project-op[%s] props: %s" project-key props)
+	[id left projections]
+  (log/format :flow "project-op: %s" (seq projections))
   (let [left-out (:out left)
-        out (map* (if (empty? props)
-                    (fn [pt] (get pt project-key))
-                    (fn [pt]
-                      (let [m (get pt (get pt project-key))]
-                        (select-keys m props))))
+        out (map* (fn [pt]
+                    (when pt
+                      (reduce
+                        (fn [result [project-key & props]]
+                          (log/format :flow "projecting[%s] result: %s " (str project-key "->" props) result)
+                          (if (empty? props)
+                            (merge result {:id (get pt project-key)})
+                            (let [m (get pt (get pt project-key))]
+                              #_(log/to :flow "pt: " pt "\nm: " m 
+                                      "\nprops: " (select-keys m props))
+                              (merge result (select-keys m props)))))
+                        {} projections)))
                   left-out)]
     (on-closed left-out #(close out))
     (flow-log "project" out)
     {:type :project
      :id id
-     :project-key project-key
+     :projections projections
      :left left
      :out out}))
 

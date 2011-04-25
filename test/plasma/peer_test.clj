@@ -12,7 +12,7 @@
 ;(log/repl :peer)
 
 (deftest get-node-test
-  (let [p (peer "db/p1" {:port 1234})]
+  (let [p (peer {:path "db/p1" :port 1234})]
     (try
       (let [client (get-connection (connection-manager) (plasma-url "localhost" 1234))]
         (dotimes [i 4]
@@ -29,9 +29,9 @@
     (clear-graph)
     (test-graph)))
 
-(defn simple-query-test []
+(deftest simple-query-test []
   (let [port (+ 10000 (rand-int 10000))
-        p (peer "db/p1" {:port port})
+        p (peer {:path "db/p1" :port port})
         con (get-connection (connection-manager) (plasma-url "localhost" port))
         q (q/path [:music :synths :synth])]
     (try
@@ -46,22 +46,22 @@
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port (+ 10000 (rand-int 10000))
-        local (peer "db/p1" {:port port})
+        local (peer {:path "db/p1" :port port})
         root-id (:id (get-node local ROOT-ID))
         manager (:manager local)]
     (try
       (reset-peer local)
       (let [foo (link local root-id {:name "foo"} :foo)
             bar (link local foo {:name "bar"} :bar)]
-        (is (= bar (first (query local (q/path [:foo :bar]))))))
+        (is (= bar (:id (first (query local (q/path [:foo :bar])))))))
 
       (let [con (get-connection manager (plasma-url "localhost" port))]
         (is (uuid? (:id (wait-for (get-node con ROOT-ID) 200))))
         (let [q (q/path [s [:music :synths :synth]]
                   (where (>= (:score s) 0.6)))
-              qp (-> q (q/project 's))
+              qp (-> q (q/project s))
               lres (query local q)
-              res (query con q {} 200)
+              res  (query con q {} 200)
               lchan (lamina/lazy-channel-seq
                       (query-channel local qp)
                       100)
@@ -70,39 +70,38 @@
                       100)]
           (is (= lres res lchan cchan))
           (is (= 2 (count res)))
-          (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con %) 200)
+          (is (= #{:bass :kick} (set (map :label (map #(wait-for (get-node con (:id %)) 200)
                                                       res)))))))
       (finally
         (close local)))))
+
 
 (deftest proxy-node-test []
   (dosync (alter config* assoc
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [port     (+ 1000 (rand-int 10000))
-        local    (peer "db/p1" {:port port})
-        remote   (peer "db/p2" {:port (inc port)})]
+        local    (peer {:port port})
+        remote   (peer {:port (inc port)})]
     (try
       (reset-peer local)
       (reset-peer remote)
       ; Add a proxy node to the local graph pointing to the root of the remote
       ; graph.
-      (let [remote-root (get-node remote ROOT-ID)
+      (let [remote-root (:id (get-node remote ROOT-ID))
             _ (log/to :peer "remote-root: " remote-root)
             net (first (query local (q/path [:net])))
+
             _ (log/to :peer "net: " net)
-            peer-proxy (with-peer-graph local
-                        (make-proxy-node (:id remote-root)
-                                    (plasma-url "localhost" (:port remote))))
-            link (with-peer-graph local
-                   (make-edge net peer-proxy :peer))]
+            peer-proxy (link local (:id net) {:id remote-root
+                                          :proxy (plasma-url "localhost" (:port remote))}
+                               {:label :peer})]
 
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
         (let [q (-> (q/path [synth [:net :peer :music :synths :synth]])
-                  (q/project 'synth :label))
+                  (q/project [synth :label]))
               res (query local q)]
-          ;(println "res: " res)
           (is (= #{:kick :bass :snare :hat} (set (map :label res))))))
       (finally
         (close local)
@@ -114,16 +113,15 @@
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [n-peers 10
         port (+ 1000 (rand-int 10000))
-        local (peer "db/p1" {:port port})
+        local (peer {:port port})
         peers (doall
                 (map
                   (fn [n]
-                    (let [p (peer (str "db/peer-" n)
-                                  {:port (+ port n 1)
+                    (let [p (peer {:port (+ port n 1)
                                    :manager (:manager local)})]
                       (with-peer-graph p
                         (clear-graph)
-                        (let [root-id (root-node)]
+                        (let [root-id (root-node-id)]
                           (node-assoc root-id :peer-id n)
                           (with-nodes! [net :net
                                         docs :docs
@@ -140,20 +138,17 @@
     (try
       (with-peer-graph local
         (clear-graph)
-        (let [root-id (root-node)
+        (let [root-id (root-node-id)
               net (make-node {:label :net})]
           (make-edge root-id net {:label :net})
           (doseq [[p peer-root n] peers]
             (make-edge net
                   (make-proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
-                  :peer))
-         ; (println "peers: " (query (path [:net :peer])))
-          ))
+                  :peer))))
         (let [q (-> (q/path [doc [:net :peer :docs :doc]]
                       (where (> (:score doc) 0.5)))
-                  (q/project 'doc :label :score))
+                  (q/project [doc :label :score]))
               res (query local q)]
-          ;(println "res: " res)
           (is (= n-peers (count res))))
       (finally
         (close local)
@@ -176,22 +171,22 @@
     (last chain-ids)))
 
 (deftest iter-n-test
-  (let [local (peer "db/p1")]
+  (let [local (peer)]
     (try
       (let [end-id (with-peer-graph local
                      (clear-graph)
-                     (let [root-id (root-node)]
+                     (let [root-id (root-node-id)]
                        (log/to :peer "root-id: " root-id)
                        (node-chain root-id 10 :foo)))
             res-chan (iter-n-query local 10 (-> (q/path [f [:foo]])
-                                              (q/project 'f)))]
+                                              (q/project f)))]
           (is (= end-id
-                 (first (lamina/channel-seq res-chan 200)))))
+                 (:id (first (lamina/channel-seq res-chan 200))))))
       (finally
         (close local)))))
 
 (deftest connect-test
-  (let [local (peer "db/p1" {:port 2342})
+  (let [local (peer {:port 2342})
         connected (atom [])]
     (try
       (on-connect local (fn [new-con] (swap! connected #(conj % (:url new-con)))))
@@ -199,14 +194,13 @@
         (let [con (get-connection (connection-manager) (plasma-url "localhost" 2342))]
           (wait-for (get-node con ROOT-ID) 200)
           (close con)))
-      ;(println "connected: " @connected)
       (is (= 10 (count @connected)))
       (finally
         (close local)))))
 
 (deftest connection-handler-test
-  (let [p1 (peer "db/p1" {:port 2222})
-        p2 (peer "db/p2" {:port 3333})
+  (let [p1 (peer {:port 2222})
+        p2 (peer {:port 3333})
         res (atom [])]
     (try
       (on-connect (:listener p2) (fn [incoming]
@@ -229,7 +223,7 @@
           (close p2)))))
 
 (comment
-(def p (peer "db/p1" {:port 1234}))
+(def p (peer {:port 1234}))
 (def con (get-connection (connection-manager) (plasma-url "localhost" 1234)))
 (query p (q/path [:net]))
 (query con (q/path [:net]))

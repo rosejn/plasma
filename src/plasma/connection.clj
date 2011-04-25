@@ -80,9 +80,11 @@
 
     (lamina/receive-all s-in-chan
       (fn [msg]
+        (log/to :stream "msg: " msg)
         (if (= :closed msg)
           (lamina/close snd-chan)
-          (lamina/enqueue rcv-chan msg))))
+          (lamina/enqueue rcv-chan msg))
+        (log/to :stream "closed?:" (lamina/closed? snd-chan))))
 
     (lamina/siphon (lamina/map* (fn [msg]
                     {:type :stream
@@ -185,7 +187,7 @@
 
     (lamina/siphon 
       (lamina/map* (fn [obj] 
-                     (let [msg {:message (str obj) :host host :port port}]
+                     (let [msg {:message obj :host host :port port}]
                        (log/to :con "[udp-con] sending msg: " msg)
                        msg))
                    outer)
@@ -194,7 +196,7 @@
     (lamina/siphon 
       (lamina/map* (fn [msg] 
                      (log/to :con "[udp-con] received:" msg)
-                     (try-with-meta (read-string (:message msg))
+                     (try-with-meta (:message msg)
                                     (dissoc msg :message)))
                    udp-chan)
       outer)
@@ -382,7 +384,7 @@
               ; incoming messages with the same host/port go to the outer channel
               (lamina/siphon 
                 (lamina/map* 
-                  (fn [msg] (try-with-meta (read-string (:message msg)) 
+                  (fn [msg] (try-with-meta (:message msg) 
                                            (dissoc msg :message)))
                   (lamina/filter* 
                     (fn [{:keys [host port]}] (= host-key {:host host :port port}))
@@ -397,11 +399,11 @@
                   (fn [obj]
                     (log/to :con "[udp listener] sending: " 
                             (assoc host-key :message obj))
-                    (assoc host-key :message (str obj)))
+                    (assoc host-key :message obj))
                   outer)
                 udp-chan)
 
-              (lamina/enqueue outer (try-with-meta (read-string (:message msg))
+              (lamina/enqueue outer (try-with-meta (:message msg)
                                                (dissoc msg :message)))
               (handler inner host-key))))))
     #(lamina/close udp-chan)))
