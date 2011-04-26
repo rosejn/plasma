@@ -1,9 +1,10 @@
 (ns plasma.core
   (:use
     [plasma util config url]
+    [plasma.jiraph mem-layer]
     [lamina core]
     [aleph formats]
-    [jiraph graph mem-layer]
+    [jiraph graph]
     [clojure.contrib.core :only (dissoc-in)]))
 
 ; Special uuid used to query for a graph's root node.
@@ -136,7 +137,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
   [& [path]]
   (let [g (if path
             {:graph (layer path)}
-            {:graph (mem-layer)})]
+            {:graph (ref-layer)})]
     (with-graph g
       (let [meta (find-node (config :meta-id))
             meta (if meta

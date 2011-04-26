@@ -21,8 +21,6 @@
         synths (:id (first (query (path [:music :synths]))))
         _ (println "synths: " synths)
         res3 (query (path [synths :synth]))]
-    (println "synths: " synths)
-    (println "res3: " res3)
     (is (apply = #{:kick :bass :snare :hat}
                (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))))
 

@@ -11,7 +11,7 @@
 
 (deftest bootstrap-test
   (let [port (+ 5000 (rand-int 5000))
-        strapper (bootstrap-peer "db/strapper" {:port port})
+        strapper (bootstrap-peer {:port port})
         strap-url (plasma-url "localhost" port)
         n-peers 10
         peers (make-peers n-peers (inc port)
@@ -24,7 +24,7 @@
     (try
       (doseq [p peers]
         (bootstrap p strap-url))
-      (Thread/sleep (* 2.3 BOOTSTRAP-RETRY-PERIOD))
+      (Thread/sleep (* 2.5 BOOTSTRAP-RETRY-PERIOD))
       (let [all-peers (query strapper (q/path [:net :peer]))
             p-count (first (query (last peers) (q/count* (q/path [:net :peer])) 200))]
         (is (= n-peers (count all-peers)))
