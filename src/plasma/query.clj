@@ -293,19 +293,19 @@
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
         paths (partition 2 bindings)
-        paths (vec (second 
+        paths (vec (second
                      (reduce
-                       (fn [[known-syms new-paths] [bsym path-segs]] 
+                       (fn [[known-syms new-paths] [bsym path-segs]]
                          #_(println "known: " known-syms "bsym: " bsym "psegs: " path-segs)
                          (let [sym `'~bsym
                                known-syms (conj known-syms bsym)
-                               segs (vec (map 
+                               segs (vec (map
                                            (fn [seg]
                                              (if (known-syms seg)
                                                `'~seg
                                                `~seg)) path-segs))
                                new-paths (conj new-paths [sym segs])]
-                           [known-syms new-paths])) 
+                           [known-syms new-paths]))
                        [#{} []]
                        paths)))]
     `(path* ~paths (quote ~body))))
@@ -529,10 +529,11 @@
     (let [param-val (if (contains? param-map param-name)
                       (get param-map param-name)
                       param-name)
+          param-val (if (seq? param-val)
+                      param-val
+                      [param-val])
           param-op (get-in tree [:ops param-id])]
-      (if (seq? param-val)
-        (apply enqueue-and-close (get param-op :in) param-val)
-        (enqueue-and-close (get param-op :in) param-val)))))
+        (apply enqueue-and-close (get param-op :in) param-val))))
 
 (defn query-results
   [tree & [timeout]]

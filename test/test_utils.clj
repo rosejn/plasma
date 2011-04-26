@@ -48,7 +48,7 @@
   (doall
     (for [i (range n)]
         (let [p (peer {:port (+ start-port i)
-                       :path (str "db/peer-" i)
+                       ;:path (str "db/peer-" i)
                        }
                       )]
           (with-peer-graph p

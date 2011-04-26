@@ -5,9 +5,6 @@
   (:require [logjam.core :as log]
             [plasma.query :as q]))
 
-(def N-CLUSTERS 10)
-(def CLUSTER-SIZE 8)
-
 (defn cluster-ids
   [n-clusters size]
   (let [start-id 100
@@ -17,7 +14,8 @@
 
 (defn cluster-peers [n-cl cl-size]
   (let [ids (cluster-ids n-cl cl-size)
-        strapper (bootstrap-peer "db/strapper" {:port 1233})
+        strapper (bootstrap-peer {;:path "db/strapper" 
+                                  :port 1234})
         strap-url (plasma-url "localhost" 1234)
         peers (make-peers (* n-cl cl-size) (+ 2000 (rand-int 10000))
                           (fn [i]
@@ -36,12 +34,15 @@
 
 (defn trim-peers
   [p n]
-  (let [peers (query p (-> 
+  (let [peers (query p (->
                          (q/path [peer [:net :peer]
                                   data [peer :data]])
                          (q/sort* 'data :value)
-                         (q/project 'peer)))]
+                         (q/project [peer] [data :value])))]
     peers))
+
+(def N-CLUSTERS 2)
+(def CLUSTER-SIZE 3)
 
 (defn cluster-benchmark
   []

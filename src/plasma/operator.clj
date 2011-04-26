@@ -141,7 +141,7 @@
   that this was the last value."
   [id & [param-name]]
   (let [in (channel)
-        out (map* (fn [val] {id val}) in)]
+        out (map* (fn [v] {id v}) in)]
     (on-closed in #(close out))
     (flow-log "parameter" out)
     (close-log "parameter" out)
@@ -241,7 +241,8 @@
                     (log/format :flow "[traverse] [%s] proxy: %s " (trim-id src-id) proxy)
                     ; Send the remote-sub-query channel to the recv operator
                     (enqueue recv-chan
-                             (remote-sub-query plan id src-id proxy)))
+                             (map* #(merge pt %)
+                                   (remote-sub-query plan id src-id proxy))))
 
                   :default
                   (let [tgts (keys (get-edges src-id edge-pred-fn))]
@@ -411,11 +412,14 @@
   properties for operations like select and sort that rely on property
   values already being in the PT map."
   [id left pt-key props]
+  (log/format :flow "[property] id: %s left: %s" id (:id left))
   (let [left-out (:out left)
         out (map* (fn [pt]
                     (let [node-id  (get pt pt-key)
                           existing (get pt node-id)]
                       ; Only load props from disk of they don't already exist
+                      (log/format :flow "[property] pt-key: %s props: %s\npt: %s"
+                                  pt-key props pt)
                       (if (every? #(contains? existing %) props)
                         pt
                         (let [node     (find-node node-id)
@@ -441,11 +445,11 @@
                     (when pt
                       (reduce
                         (fn [result [project-key & props]]
-                          (log/format :flow "projecting[%s] result: %s " (str project-key "->" props) result)
+                          (log/format :flow "projecting[%s] result: %s\npt: %s" (str project-key "->" props) result pt)
                           (if (empty? props)
                             (merge result {:id (get pt project-key)})
                             (let [m (get pt (get pt project-key))]
-                              #_(log/to :flow "pt: " pt "\nm: " m 
+                              #_(log/to :flow "pt: " pt "\nm: " m
                                       "\nprops: " (select-keys m props))
                               (merge result (select-keys m props)))))
                         {} projections)))

@@ -9,7 +9,7 @@
   [])
 
 (defn random-walk-n
-  "Starting at peer p, do an n hop random walk, returning {:id :proxy} maps 
+  "Starting at peer p, do an n hop random walk, returning {:id :proxy} maps
   from all the peers traversed."
   [p n]
   (map first
@@ -19,7 +19,7 @@
                      (fn [[_ g]]
                        (let [q (->
                                  (q/path [peer [:net :peer]])
-                                 (q/project 'peer :id :proxy)
+                                 (q/project [peer :id :proxy])
                                  (q/choose 1))
                              res (first (query g q))]
                          [res (peer-connection p (:proxy res))]))
