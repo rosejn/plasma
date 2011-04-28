@@ -320,10 +320,9 @@
   (and (associative? q)
        (= :sub-query (:type q))))
 
-(defn sort*
-  [plan sort-var sort-prop & [order]]
-  (let [order (or order :asc)
-        {:keys [root ops]} plan
+(defn order-by*
+  [plan sort-var sort-prop order]
+  (let [{:keys [root ops]} plan
         sort-key (get (:pbind plan) sort-var)
         p-op (plan-op :property
                       :deps [(:root plan)]
@@ -337,6 +336,13 @@
     (assoc plan
            :root (:id s-op)
            :ops ops)))
+
+(defmacro order-by
+  "Sort the results by a specific property value of one of the nodes
+  traversed in a path expression."
+  ([plan sort-var sort-prop & [order]]
+   (let [order (or order :asc)]
+     `(plasma.query/order-by* ~plan '~sort-var ~sort-prop ~order))))
 
 (defn downstream-op-node
   "Find the downstream operator node for the given operator node in the plan."

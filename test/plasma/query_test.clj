@@ -70,6 +70,18 @@
                  2)]
     (is (= 2 (count (query q))))))
 
+(deftest order-by-test
+  (let [q1 (-> (path [synth [:music :synths :synth]])
+             (order-by synth :score)
+             (project [synth :label :score]))
+        q2 (-> (path [synth [:music :synths :synth]])
+             (order-by synth :score :desc)
+             (project [synth :label :score]))
+        r1 (query q1)
+        r2 (query q2)]
+    (is (= 4 (count r1) (count r2)))
+    (is (= r1 (reverse r2)))))
+
 (defn append-send-node
   [plan]
   (let [{:keys [ops root]} plan
