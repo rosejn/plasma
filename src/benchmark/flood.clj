@@ -1,13 +1,15 @@
 (ns benchmark.flood
-  (:use [plasma util core connection peer viz]
+  (:use [plasma util url core connection peer viz]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
             [plasma.query :as q]))
 
+; Shows a two tier flood query where the path expression crosses two proxy nodes
+
 (defn- link-proxy
   [local remote]
-  (let [net (first (query local (q/path [:net])))
+  (let [net (:id (first (query local (q/path [:net]))))
         p-root (get-node remote ROOT-ID)
         p-id (:id p-root)
         p-port (:port remote)]
@@ -39,16 +41,16 @@
     (try
       (println "peers: " (query base (q/path [:net :peer])))
       (println "proxies: " (query base (-> (q/path [p [:net :peer]])
-                                (q/project 'p :proxy))))
+                                (q/project [p :proxy]))))
       (println "peer values: " (query base (-> (q/path [p [:net :peer]
                                            d [p :data]])
-                                (q/project 'd :value))))
-      (println "tier two: " 
-        (sort (map :value 
-             (query base 
-                    (-> 
+                                (q/project [d :value]))))
+      (println "tier two: "
+        (sort (map :value
+             (query base
+                    (->
                       (q/path [d [:net :peer :net :peer :data]])
-                      (q/project 'd :value))))))
+                      (q/project [d :value]))))))
       (finally
         (close-peers peers)))))
 
