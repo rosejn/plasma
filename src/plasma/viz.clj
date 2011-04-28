@@ -1,6 +1,7 @@
 (ns plasma.viz
   (:use [plasma util core operator]
-        jiraph.graph)
+        jiraph.graph
+        [clojure.contrib shell-out])
   (:require [logjam.core :as log]
             [vijual :as vij]
             [clojure (zip :as zip)]))
@@ -24,48 +25,105 @@
   [plan]
   (vij/draw-tree (tree-vecs plan)))
 
-(defn- dot-id
-  [id]
-  (trim-id id))
-;  (apply str "ID_" (take 4 (drop 5 id))))
-
 (defn- dot-edge
-  [src tgt props]
+  [src tgt props options]
   (let [label (name (:label props))]
     (println (str "\t\"" src "\" -> \"" tgt "\" [label=\"" label "\"];"))))
 
-(defn- dot-node
-  [id]
-  (let [n (find-node id)
-        d-id (dot-id id)
-        edges (get-edges id)
-        label (or (:label n) d-id)
-        label (if (keyword? label)
-                (name label)
-                label)]
-    (unless (empty? edges)
-            (println (str "\t\"" d-id "\" [label=\"" label "\"];"))
-            (doseq [[tgt-id props] edges]
-              (dot-edge d-id (dot-id tgt-id) props)))))
+(defn- dot-record-label
+  [props options]
+  (let [props (if (coll? (:node-props options))
+                (select-keys props (:node-props options))
+                props)
+        key-vals (map 
+                   (fn [[k v]]
+                     (str (if (keyword? k)
+                            (name k)
+                            k) ": " 
+                          (if (uuid? v)
+                            (trim-id v)
+                            v))) 
+                   props)
+        prop-lbls (apply str (interpose " | " key-vals))]
+    (str "[label=\"{ " prop-lbls "}\"];")))
 
-(defn- dot-graph
+(defn- dot-node
+  [id options]
+  (let [n (find-node id)
+        d-id (trim-id id)
+        node-props (:node-props options)
+        lbl (if node-props
+              (dot-record-label (dissoc n :edges) options)
+              (or (:label n)
+                  d-id))]
+        ;edges (get-edges id)
+        ;label (or (:label n) d-id)
+        ;label (if (keyword? label)
+        ;        (name label)
+        ;        label)]
+    (println (str "\t\"" d-id "\"" lbl))
+    (doseq [[tgt-id props] (:edges n)]
+      (dot-edge d-id (trim-id tgt-id) props))))
+
+(defn dot-graph
   "Output the dot (graphviz) graph description for the given graph."
-  [g]
+  [g options]
   (with-graph g
-    (let [nodes (node-ids :graph)]
+    (let [nodes (filter 
+                  #(not= "UUID:META" %)
+                  (node-ids :graph))
+          node-props (:node-props options)]
       (with-out-str
         (println "digraph G {\n")
-        (println "\tnode [shape=doublecircle]")
-        (dot-node (root-node-id))
-        (println "\tnode [shape=circle]")
-        (doseq [n (filter #(not (= (root-node-id) %)) nodes)]
-          (dot-node n))
+        (if node-props
+          (println "\tnode [shape=Mrecord]")
+          (println "\tnode [shape=circle]"))
+        (doseq [n nodes]
+          (dot-node n options))
         (println "}")))))
 
 (defn save-dot-graph
-  [g path]
-  (spit path (dot-graph g)))
+  ([g path] (save-dot-graph g path {}))
+  ([g path options]
+   (spit path (dot-graph g options))))
 
+(def EDGE-FONT 24)
+(def NODE-FONT 24)
+(def OUT-FORMAT "ps")
+
+(defn save-graph-image
+  ([in out] (save-graph-image in out {}))
+  ([in out options]
+   (let [out-format (:out-format options OUT-FORMAT)
+         edge-font-size (:edge-font-size options EDGE-FONT)
+         node-font-size (:node-font-size options NODE-FONT)]
+   (sh "dot" 
+       in
+       (str "-T" out-format) 
+       (str "-Efontsize=" edge-font-size) 
+       (str "-Nfontsize=" node-font-size)
+       "-o" out))))
+
+(def APP "evince")
+
+(defn show-dot-graph
+  ([g] (show-dot-graph g {}))
+  ([g options]
+   (let [out-format (:out-format options OUT-FORMAT)
+         app (:app options APP)
+         out (str "/tmp/plasma-graph." out-format)]
+     (save-dot-graph g "/tmp/plasma-graph.dot" options)
+     (save-graph-image "/tmp/plasma-graph.dot" out options)
+     (sh app out))))
+
+(defn graph->ps
+  [g]
+  (show-dot-graph g))
+
+(defn graph->browser 
+  [g]
+  (show-dot-graph g {:out-format "svg" :app "chromium-browser"}))
+  
 (defn- label-table
   [top bottom]
   (str "<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\">\n\t"
@@ -79,10 +137,10 @@
                 :traverse (label-table "traverse" (second args))
                 :parameter (label-table "parameter"
                                 (if (uuid? (first args))
-                                  (trim-id (first args)) 
+                                  (trim-id (first args))
                                   (first args)))
                 (str "\"" (name type) "\""))]
-        (str "\t\"" (dot-id id) "\" [label=" label "]")))
+        (str "\t\"" (trim-id id) "\" [label=" label "]")))
 
 (defn- dot-plan
   [plan]
@@ -91,7 +149,7 @@
     (doseq [[id op] (:ops plan)]
       (println (dot-op op))
       (doseq [edge (:deps op)]
-        (println (str "\t\"" (dot-id id) "\" -> \"" (dot-id edge) "\""))))
+        (println (str "\t\"" (trim-id id) "\" -> \"" (trim-id edge) "\""))))
     (println "}")))
 
 (defn save-dot-plan
