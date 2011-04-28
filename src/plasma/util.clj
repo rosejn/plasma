@@ -2,6 +2,11 @@
   (:require [lamina.core :as lamina])
   (:import (java.util.concurrent Executors TimeUnit)))
 
+(defn average
+  "Returns the average of a collection of numbers."
+  [vals]
+  (/ (apply + vals) (double (count vals))))
+
 (defn uuid
   "Creates a random, immutable UUID object that is comparable using the '=' function."
   [] (str "UUID:" (. java.util.UUID randomUUID)))

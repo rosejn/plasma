@@ -225,6 +225,27 @@
                                   :args [])
                          :numerical? true)))
 
+(defn avg*
+  [{:keys [root ops pbind] :as plan} avg-var avg-prop]
+  (let [avg-key (get pbind avg-var)
+        p-op (plan-op :property
+                      :deps [root]
+                      :args [avg-key [avg-prop]])
+        avg-op (assoc (plan-op :average
+                               :deps [(:id p-op)]
+                               :args [avg-key avg-prop])
+                      :numerical? true)]
+    (assoc plan
+           :root (:id avg-op)
+           :ops (assoc ops 
+                       (:id p-op) p-op
+                       (:id avg-op) avg-op))))
+
+(defmacro avg
+  "Take the average of a set of property values bound to a path expression variable."
+  ([plan avg-var avg-prop]
+   `(plasma.query/avg* ~plan '~avg-var ~avg-prop)))
+
 (defn choose
   [{root :root :as plan} n]
   (append-root-op plan (plan-op :choose
@@ -353,6 +374,7 @@
 (defn replace-input-op
   "Returns a new operator node with the left input replaced with new-left."
   [op old new]
+  (println "replacing input for op: " op)
   (let [index (.indexOf (:deps op) old)]
     (assoc-in op [:deps index] new)))
 

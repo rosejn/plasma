@@ -40,6 +40,9 @@
   "Creates a query plan operator node.  Takes an operator type, dependent
   operator ids, and the operator parameters."
   [op & {:keys [deps args]}]
+  (unless (every? uuid? deps)
+          (throw (Exception. (str "Invalid operator dependency (must be UUID)."
+                                  op " deps: " deps))))
   {:type op
    :id (uuid)
    :deps (vec deps)
@@ -285,23 +288,23 @@
   "Puts all incoming PTs into a buffer queue, and then when the input channel
   is closed dumps the whole buffer queue into the output queue.
 
-  If an aggregate function, agg-fn, is passed then it will be called and
+  If an aggregate function is passed then the fn will be called and
   passed a seq of all the PTs, and it's result will be sent to the output
-  channel."
-  [id left & [agg-fn]]
+  channel.  The op-name will be used for log messages."
+  [id left & [agg-fn op-name]]
   (let [left-out (:out left)
         buf (channel)
         out (channel)
 				agg-fn (or agg-fn identity)]
     (siphon left-out buf)
-    (flow-log "aggregate in" left-out)
+    (flow-log op-name left-out)
     (on-closed left-out
       (fn []
         (let [aggregated (agg-fn (channel-seq buf))]
           (doseq [item aggregated]
             (enqueue out item)))
         (close out)))
-    (flow-log "aggregate" out)
+    (flow-log op-name out)
     {:type :aggregate
      :id id
      :left left
@@ -322,7 +325,7 @@
                        val   (get props sort-prop)]
                    val))
 			 sort-fn #(sort-by key-fn comp-fn %)]
-	(aggregate-op id left sort-fn)))
+	(aggregate-op id left sort-fn "sort")))
 
 (defn min-op
   "Aggregates the input and returns the PT with the minimum value (numerical)
@@ -334,7 +337,7 @@
                    pval))
         min-fn (fn [arg-seq]
                  [(apply min-key key-fn arg-seq)])]
-    (aggregate-op id left min-fn)))
+    (aggregate-op id left min-fn "min")))
 
 (defn max-op
   "Aggregates the input and returns the PT with the maximum value (numerical)
@@ -346,21 +349,7 @@
                    pval))
         max-fn (fn [arg-seq]
                  [(apply max-key key-fn arg-seq)])]
-    (aggregate-op id left max-fn)))
-
-; TODO: Determine if this really makes sense to include, since it
-; returns a value rather than an PT like all the other operators...
-(comment defn avg-op
-  "Aggregates the input and returns the average value (numerical)
-  corresponding to the avg-prop property."
-  [left maximum-key min-prop]
-  (let [key-fn (fn [pt]
-                 (let [node (find-node (get pt maximum-key))
-                       pval (get node min-prop)]
-                   pval))
-        max-fn (fn [arg-seq]
-                 [(apply max-key key-fn arg-seq)])]
-    (aggregate-op left max-fn)))
+    (aggregate-op id left max-fn "max")))
 
 (def PREDICATE-OPS
   {'= =
@@ -481,11 +470,23 @@
   [id left n]
   (let [choose-fn (fn [arg-seq]
                     (take n (shuffle arg-seq)))]
-    (aggregate-op id left choose-fn)))
+    (aggregate-op id left choose-fn "choose")))
 
 (defn count-op
   "Outputs the total count of its aggregated input."
   [id left]
   (let [count-fn (fn [arg-seq] [(count arg-seq)])]
-    (aggregate-op id left count-fn)))
+    (aggregate-op id left count-fn "count")))
+
+(defn average-op
+  "Aggregates the input and returns the average value (numerical)
+  corresponding to the avg-prop property."
+  [id left avg-key avg-prop]
+  (let [key-fn (fn [pt]
+                 (let [node (find-node (get pt avg-key))
+                       pval (get node avg-prop)]
+                   pval))
+        avg-fn (fn [arg-seq]
+                 [(average (map key-fn arg-seq))])]
+    (aggregate-op id left avg-fn "average")))
 
