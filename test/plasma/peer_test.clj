@@ -1,5 +1,5 @@
 (ns plasma.peer-test
-  (:use [plasma url config util core connection peer]
+  (:use [plasma url config util graph connection peer]
         test-utils
         clojure.test
         clojure.stacktrace)
@@ -11,13 +11,19 @@
 ;(log/file :peer "peer.log")
 ;(log/repl :peer)
 
+(defmacro r
+  [timeout & body]
+  `(let [f# (future ~@body)]
+       (.get f# ~timeout (java.util.concurrent.TimeUnit/MILLISECONDS))))
+
+
 (deftest get-node-test
   (let [p (peer {:path "db/p1" :port 1234})]
     (try
       (let [client (get-connection (connection-manager) (plasma-url "localhost" 1234))]
         (dotimes [i 4]
           (let [res-chan (get-node client ROOT-ID)
-                res (wait-for res-chan 1000)]
+                res (wait-for res-chan 400)]
             (is (uuid? (:id res)))))
         (close client))
       (finally
@@ -62,10 +68,8 @@
               qp (-> q (q/project s))
               lres (query local q)
               res  (query con q {} 200)
-              lchan (lamina/lazy-channel-seq
-                      (query-channel local qp)
-                      100)
-              cchan (lamina/lazy-channel-seq
+              lchan (lamina/channel-seq (query-channel local qp) 200)
+              cchan (lamina/channel-seq
                       (query-channel con qp)
                       100)]
           (is (= lres res lchan cchan))

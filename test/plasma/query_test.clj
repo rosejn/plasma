@@ -1,5 +1,5 @@
 (ns plasma.query-test
-  (:use [plasma util core operator query url]
+  (:use [plasma util graph operator query url]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
@@ -19,10 +19,16 @@
   (let [res (query (path [:music :synths :synth]))
         res2 (query (path [ROOT-ID :music :synths :synth]))
         synths (:id (first (query (path [:music :synths]))))
-        _ (println "synths: " synths)
         res3 (query (path [synths :synth]))]
     (is (apply = #{:kick :bass :snare :hat}
                (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))))
+
+(defmacro run-time
+  "Evaluates expr and returns the time it took to execute in ms."
+  [expr]
+  `(let [start# (. System (nanoTime))
+         ret# ~expr]
+     (/ (double (- (. System (nanoTime)) start#)) 1000000.0)))
 
 (deftest where-query-test
   (let [q (path [s [:music :synths :synth]]
@@ -86,27 +92,6 @@
         r2 (query q2)]
     (is (= 4 (count r1) (count r2)))
     (is (= r1 (reverse r2)))))
-
-(defn append-send-node
-  [plan]
-  (let [{:keys [ops root]} plan
-        op (plan-op :send
-                    :deps [root])
-        ops (assoc ops (:id op) op)  ; add to ops
-        plan (assoc plan
-                    :type :sub-query
-                    :root op
-                    :ops ops)]
-    plan))
-
-(deftest sub-query-test
-  (let [plan (path [synth [:music :synths :synth]])
-        plan (project plan [synth :label])
-        res-chan (channel)]
-    (sub-query res-chan plan)
-    (is (= #{:kick :bass :snare :hat}
-           (set (map :label
-                     (channel-seq res-chan 1000)))))))
 
 (deftest optimizer-test
   (let [plan (-> (path [sesh [:sessions :session]

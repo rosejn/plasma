@@ -1,5 +1,6 @@
 (ns plasma.util
-  (:require [lamina.core :as lamina])
+  (:require [lamina.core :as lamina]
+            [logjam.core :as log])
   (:import (java.util.concurrent Executors TimeUnit)))
 
 (defn average
@@ -22,11 +23,6 @@
 
 (defn current-time []
   (System/currentTimeMillis))
-
-(defmacro unless
-  [expr & form]
-  `(when (not ~expr)
-     ~@form))
 
 (defn regexp?
   [obj]
@@ -61,4 +57,12 @@
 (defn wait-for
   [chan timeout]
   (lamina/wait-for-message chan timeout))
+
+(defn channel-timeout
+  "Closes the channel after timeout."
+  [ch timeout]
+  (schedule timeout
+            (fn []
+              (log/to :flow "channel-timeout closing...")
+              (lamina/close ch))))
 

@@ -1,5 +1,5 @@
 (ns plasma.bootstrap
-  (:use [plasma core connection peer util config network])
+  (:use [plasma graph connection peer util config network])
   (:require [plasma.query :as q]
             [lamina.core :as lamina]
             [logjam.core :as log]))
@@ -30,6 +30,7 @@
 
 (defn add-peer
   [p id url]
+  (log/to :bootstrap "add-peer: " url)
   (with-peer-graph p
     (let [prx (make-proxy-node id url)
           net (net-root p)]
@@ -39,7 +40,7 @@
   [p con event]
   (let [[root-id url] (:params event)]
     (log/to :bootstrap "advertise-event:" url root-id)
-    (unless (have-peer? p url)
+    (when-not (have-peer? p url)
             (add-peer p root-id url))))
 
 (defn- bootstrap-connect-handler
@@ -58,35 +59,49 @@
      p)))
 
 (def N-BOOTSTRAP-PEERS 5)
-(def BOOTSTRAP-RETRY-PERIOD 500)
+(def RETRY-PERIOD 200)
+(def MAX-RETRY-PERIOD (* 50 RETRY-PERIOD))
+(def MAX-RETRIES 50)
 
 (defn add-bootstrap-peers
-  [p con n]
-  (let [new-peers (query con (-> (q/path [peer [:net :peer]])
-                                    (q/project [peer :proxy :id])
-                                    (q/choose n)))]
-    (log/to :bootstrap "n: " n "\nnew-peers: " (seq new-peers))
-    (doseq [{url :proxy id :id} new-peers]
-      (unless (get-node p id)
-              (add-peer p id url))))
-  (let [n-peers (first (query p (q/count*
-                                  (q/path [:net :peer]))))]
-    (log/to :bootstrap "n-peers: " n-peers)
-    (when (< n-peers N-BOOTSTRAP-PEERS)
-      (schedule BOOTSTRAP-RETRY-PERIOD
-                #(add-bootstrap-peers p con (- N-BOOTSTRAP-PEERS n-peers))))))
+  ([p boot-url n] (add-bootstrap-peers p boot-url n 0))
+  ([p boot-url n n-retries]
+   (let [con (peer-connection p boot-url)
+         new-peers (query con (-> (q/path [peer [:net :peer]])
+                                (q/project [peer :proxy :id])
+                                (q/choose N-BOOTSTRAP-PEERS)))]
+     (log/to :bootstrap "n: " n "\n"
+             "new-peers: " (seq new-peers))
+     (doseq [{url :proxy id :id} new-peers]
+       (when-not (get-node p id)
+               (add-peer p id url)))
+     (let [n-peers (first (query p (q/count*
+                                     (q/path [:net :peer]))))]
+       (log/to :bootstrap "n-peers: " n-peers)
+       (when (and
+               (not= :closed @(:status p))
+               (< n-retries MAX-RETRIES)
+               (< n-peers N-BOOTSTRAP-PEERS))
+         (schedule (min MAX-RETRY-PERIOD (* RETRY-PERIOD (Math/pow n-retries 1.5)))
+                   #(add-bootstrap-peers p con
+                                         (- N-BOOTSTRAP-PEERS n-peers)
+                                         (inc n-retries))))))))
 
 (defn- advertise
   [con root-id url]
   (send-event con :advertise [root-id url]))
 
-(defn bootstrap
+(defn- bootstrap*
   [p boot-url]
   (let [booter (peer-connection p boot-url)
         root-id (with-peer-graph p (root-node-id))
         my-url (public-url (:port p))]
-    (advertise booter root-id my-url)
     (handle-peer-connection p booter)
-    (add-bootstrap-peers p booter N-BOOTSTRAP-PEERS)))
+    (advertise booter root-id my-url)
+    (add-bootstrap-peers p boot-url N-BOOTSTRAP-PEERS)))
+
+(defn bootstrap
+  [p boot-url]
+  (schedule 0 #(bootstrap* p boot-url)))
 
 

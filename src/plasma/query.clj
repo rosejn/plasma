@@ -1,5 +1,5 @@
 (ns plasma.query
-  (:use [plasma util core operator url]
+  (:use [plasma util graph operator url viz]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -237,7 +237,7 @@
                       :numerical? true)]
     (assoc plan
            :root (:id avg-op)
-           :ops (assoc ops 
+           :ops (assoc ops
                        (:id p-op) p-op
                        (:id avg-op) avg-op))))
 
@@ -336,11 +336,6 @@
   (and (associative? q)
        (= :query (:type q))))
 
-(defn sub-query?
-  [q]
-  (and (associative? q)
-       (= :sub-query (:type q))))
-
 (defn order-by*
   [plan sort-var sort-prop order]
   (let [{:keys [root ops]} plan
@@ -374,7 +369,6 @@
 (defn replace-input-op
   "Returns a new operator node with the left input replaced with new-left."
   [op old new]
-  (println "replacing input for op: " op)
   (let [index (.indexOf (:deps op) old)]
     (assoc-in op [:deps index] new)))
 
@@ -544,7 +538,7 @@
 (defn run-query
   "Execute a query by feeding parameters into a query operator tree."
   [tree param-map]
-  (unless *graph*
+  (when-not *graph*
     (throw (Exception. "Cannot run a query without binding a graph.
 \nFor example:\n\t(with-graph G (query q))\n")))
   (log/format :flow "[run-query] query: %s
@@ -569,11 +563,6 @@
         timeout (or timeout 1000)]
     (lazy-channel-seq chan timeout)))
 
-(defn query-result-seq
-  [chan & [timeout]]
-  (let [timeout (or timeout 1000)]
-    (lazy-channel-seq chan timeout)))
-
 (defn query-channel
   "Issue a query to the currently bound graph, and return a channel
   representing the results."
@@ -584,6 +573,7 @@
          tree (query-tree plan)
          param-map (or params {})
          res-chan (get-in (:ops tree) [(:root tree) :out])]
+     (log/to :stream "query-channel:\n" (with-out-str (print-query plan)))
      (run-query tree param-map)
      res-chan)))
 
@@ -596,8 +586,13 @@
   ([plan params]
    (query plan params MAX-QUERY-TIME))
   ([plan params timeout]
-   (let [plan (with-result-project plan)]
-     (query-result-seq (query-channel plan params) timeout))))
+   (let [plan (with-result-project plan)
+         res-chan (query-channel plan params)
+         p (promise)]
+     (on-closed res-chan
+       (fn [] (deliver p (channel-seq res-chan))))
+     (channel-timeout res-chan timeout)
+     @p)))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."
@@ -615,18 +610,6 @@
     (doseq [op (filter #(= :send (:type %)) (vals ops))]
       (log/to :query "[with-send-channel] op: " op))
     (assoc plan :ops ops)))
-
-(defn sub-query
-  "Attaches a destination channel (presumably a network channel) to
-  all send operators and then executes a query so the results will be
-  fed back to the result channel."
-  ([ch q]
-   (sub-query ch q {}))
-  ([ch q params]
-   (let [q (optimize-plan q)
-         res-chan (query-channel q params)]
-     (log/to :query "running sub-query: " (:id q))
-     (siphon res-chan ch))))
 
 ; find-node: by uuid
 ; find-edge: by uuid

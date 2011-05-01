@@ -1,7 +1,7 @@
 (ns plasma.web
-  (:use [ring.middleware file file-info]
+  (:use [plasma graph config util connection peer]
         [aleph formats http tcp]
-        [plasma core config util connection peer]
+        [ring.middleware file file-info]
         [clojure.contrib json]
         [clojure stacktrace])
   (:require [logjam.core :as log]

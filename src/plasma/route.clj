@@ -1,5 +1,5 @@
 (ns plasma.route
-  (:use [plasma core util connection peer digest url]
+  (:use [plasma graph util connection peer digest url]
         [clojure.contrib.math :only (expt)])
   (:require [logjam.core :as log]
             [lamina.core :as lamina]

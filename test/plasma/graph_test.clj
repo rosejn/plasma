@@ -1,5 +1,5 @@
-(ns plasma.core-test
-  (:use [plasma config util core]
+(ns plasma.graph-test
+  (:use [plasma config util graph]
         [jiraph graph]
         test-utils
         clojure.test

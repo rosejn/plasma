@@ -1,5 +1,5 @@
 (ns plasma.peer
-  (:use [plasma config util core connection network presence rpc]
+  (:use [plasma config util graph connection network presence rpc]
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
@@ -253,7 +253,10 @@
   (log/to :peer "stream-handler query-channel: " req)
   (let [res-chan (apply query-channel peer (:params req))]
     (lamina/siphon res-chan ch)
-    (lamina/on-drained res-chan #(lamina/close ch))))
+    (lamina/on-drained res-chan
+      (fn []
+        (log/to :stream "stream-handler closing channel")
+        (lamina/close ch)))))
 
 (defn- stream-request-handler
   [peer [ch req]]
@@ -280,8 +283,8 @@
                       (partial stream-request-handler peer)))
 
 (defn peer
-  "Create a new peer.  
-  
+  "Create a new peer.
+
   Available options:
     :path => path to persistent peer graph (database)
     :port => specify port number to listen on"
@@ -326,9 +329,9 @@
    (peer-query-channel con q {}))
   ([con q params]
    (log/to :peer "[peer-query-channel] starting query: " (:id q))
-   (stream con 'query-channel [q params])))
+   (let [s-chan (stream con 'query-channel [q params])]
+     s-chan)))
 
-; TODO: Return a result channel and enqueue an error if we fail
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel
   that will get the result of the query when it arrives."
@@ -339,13 +342,12 @@
   ([con q params timeout]
    (let [q (q/with-result-project q)
          rchan (query-channel con q params)
-         res (promise)]
+         p (promise)]
      (lamina/on-closed rchan
-                       #(deliver res (lamina/channel-seq rchan))
-                       #(log/to :close "[peer-query] closed"))
-     @res)))
+       (fn [] (deliver p (lamina/channel-seq rchan))))
+     (channel-timeout rchan timeout)
+     @p)))
 
-     ;(lamina/channel-seq rchan timeout)
 (defn peer-recur-query
   [con q])
 

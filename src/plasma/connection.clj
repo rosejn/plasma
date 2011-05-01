@@ -1,6 +1,6 @@
 (ns plasma.connection
-  (:use [aleph object udp]
-        [plasma core config util url presence rpc])
+  (:use [plasma graph config util url presence rpc]
+        [aleph object udp])
   (:require [logjam.core :as log]
 						[lamina.core :as lamina]))
 
@@ -75,16 +75,18 @@
                                   (type-channel chan :stream)))
         wrap-chan (lamina/channel)
         [snd-chan rcv-chan] (lamina/channel-pair)]
-    (lamina/on-closed snd-chan
-      (fn [] (lamina/enqueue chan {:type :stream :id id :msg :closed})))
+    (lamina/on-drained rcv-chan
+      (fn []
+        (log/format :stream "[%s] stream closed locally" id)
+        (lamina/enqueue chan {:type :stream :id id :msg ::closed})))
 
     (lamina/receive-all s-in-chan
       (fn [msg]
-        (log/to :stream "msg: " msg)
-        (if (= :closed msg)
-          (lamina/close snd-chan)
-          (lamina/enqueue rcv-chan msg))
-        (log/to :stream "closed?:" (lamina/closed? snd-chan))))
+        (if (= ::closed msg)
+          (do
+            (lamina/close snd-chan)
+            (log/format :stream "[%s] stream closed remotely" id))
+          (lamina/enqueue rcv-chan msg))))
 
     (lamina/siphon (lamina/map* (fn [msg]
                     {:type :stream
@@ -170,7 +172,7 @@
   "Returns obj with the meta-data m if possible, otherwise just returns
   obj unmodified."
   [obj m]
-  (if (isa? (type obj) clojure.lang.IObj)                   
+  (if (isa? (type obj) clojure.lang.IObj)
     (with-meta obj m)
     obj))
 
@@ -185,16 +187,16 @@
     (lamina/receive-all (lamina/fork udp-chan)
       (fn [msg] (log/to :con "[udp-con] MSG: " msg "\n\n")))
 
-    (lamina/siphon 
-      (lamina/map* (fn [obj] 
+    (lamina/siphon
+      (lamina/map* (fn [obj]
                      (let [msg {:message obj :host host :port port}]
                        (log/to :con "[udp-con] sending msg: " msg)
                        msg))
                    outer)
       udp-chan)
 
-    (lamina/siphon 
-      (lamina/map* (fn [msg] 
+    (lamina/siphon
+      (lamina/map* (fn [msg]
                      (log/to :con "[udp-con] received:" msg)
                      (try-with-meta (:message msg)
                                     (dissoc msg :message)))
@@ -267,7 +269,7 @@
 
   (remove-connection
     [this con]
-    (swap! connections* dissoc (:url con)))
+    (dosync (alter connections* dissoc (:url con))))
 
   (register-connection
     [this con]
@@ -282,29 +284,31 @@
 
   (refresh-connection
     [this con]
-    (swap! connections*
-           assoc (:url con) {:last-used (current-time) :con con})
+    (dosync (alter connections*
+                   assoc (:url con) {:last-used (current-time) :con con}))
     (when (>= (connection-count this) (config :connection-cache-limit))
       (purge-connections this))
     con)
 
   (clear-connections
     [this]
-    (doseq [con (map :con (vals @connections*))]
-      (close con))
-    (reset! connections* {}))
+    (dosync
+      (doseq [con (map :con (vals @connections*))]
+        (close con))
+      (ref-set connections* {})))
 
   (purge-connections
     [this]
-    (let [n-to-drop (- (connection-count this)
-                       (* (config :connection-cache-limit)
-                          *cache-keep-ratio*))]
-      (swap! connections*
-             (fn [conn-map]
-               (let [[to-keep to-drop] (flush-fn (vals conn-map) n-to-drop)]
-                 (doseq [con-entry to-drop]
-                   (close (:con con-entry)))
-                 (zipmap (map #(:url (:con %)) to-keep) to-keep))))))
+    (dosync
+      (let [n-to-drop (- (connection-count this)
+                         (* (config :connection-cache-limit)
+                            *cache-keep-ratio*))]
+        (alter connections*
+               (fn [conn-map]
+                 (let [[to-keep to-drop] (flush-fn (vals conn-map) n-to-drop)]
+                   (doseq [con-entry to-drop]
+                     (close (:con con-entry)))
+                   (zipmap (map #(:url (:con %)) to-keep) to-keep)))))))
 
   (connection-count
     [this]
@@ -325,7 +329,7 @@
   number of network connections, where the least-recently-used connections
   are dropped as new connections are made."
   []
-  (ConnectionCache. (atom {}) lru-flush))
+  (ConnectionCache. (ref {}) lru-flush))
 
 (defprotocol IConnectionListener
   (on-connect
@@ -348,7 +352,7 @@
     (lamina/close chan)))
 
 (defmulti make-listener
-  "Create a network socket listener that will call the 
+  "Create a network socket listener that will call the
     (handler chan client-info)
   for each incoming connection."
   (fn [proto port handler]
@@ -371,7 +375,7 @@
       (fn [msg]
         (log/to :con "[udp listener] top------------------")
         (let [host-key (select-keys msg [:host :port])
-              new-host? (boolean 
+              new-host? (boolean
                           (dosync
                             (if ((ensure known-hosts) host-key)
                               false
@@ -382,11 +386,11 @@
 
               (log/to :con "[udp listener] setup incoming")
               ; incoming messages with the same host/port go to the outer channel
-              (lamina/siphon 
-                (lamina/map* 
-                  (fn [msg] (try-with-meta (:message msg) 
+              (lamina/siphon
+                (lamina/map*
+                  (fn [msg] (try-with-meta (:message msg)
                                            (dissoc msg :message)))
-                  (lamina/filter* 
+                  (lamina/filter*
                     (fn [{:keys [host port]}] (= host-key {:host host :port port}))
                     udp-chan))
                   outer)
@@ -394,10 +398,10 @@
               (log/to :con "[udp listener] setup outgoing")
               ; messages enqueued on inner get wrapped as udp "packets" and sent
               ; to the socket channel
-              (lamina/siphon 
-                (lamina/map* 
+              (lamina/siphon
+                (lamina/map*
                   (fn [obj]
-                    (log/to :con "[udp listener] sending: " 
+                    (log/to :con "[udp listener] sending: "
                             (assoc host-key :message obj))
                     (assoc host-key :message obj))
                   outer)
@@ -412,11 +416,11 @@
   "Listen on a port for incoming connections, automatically registering them."
   [manager proto port]
   (let [connect-chan (lamina/channel)
-        listener (make-listener 
+        listener (make-listener
                    proto port
                    (fn [chan client-info]
                      (log/to :con "handling new connection: " client-info)
-                     (let [{:keys [host port]} client-info 
+                     (let [{:keys [host port]} client-info
                            url (url proto host port)
                            con (register-connection manager url chan)]
                        (log/to :con "listener new connection: " url con)

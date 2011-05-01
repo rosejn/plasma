@@ -1,5 +1,5 @@
 (ns plasma.operator
-  (:use [plasma core util]
+  (:use [plasma graph util]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -15,10 +15,6 @@
 (log/channel :flow :debug)    ; log values flowing through the operator graph
 (log/channel :close :flow) ; log operators closing their output channels
 
-(defn- close-log
-  [op chan]
-  (on-closed chan #(log/format :close "[%s] closed" op)))
-
 (defn- trim-pt
   [pt]
   (if (map? pt)
@@ -30,17 +26,18 @@
     pt))
 
 (defn- flow-log
-  [op chan]
-  (receive-all (fork chan)
-    (fn [pt]
-      (log/format :flow "[%s] %s" op (trim-pt pt))))
-  (close-log op chan))
+  [op id chan]
+  (let [id (trim-id id)]
+    (receive-all (fork chan)
+                 (fn [pt]
+                   (log/format :flow "[%s - %s] %s" op id (trim-pt pt))))
+    (on-closed chan #(log/format :close "[%s - %s] closed" op id))))
 
 (defn plan-op
   "Creates a query plan operator node.  Takes an operator type, dependent
   operator ids, and the operator parameters."
   [op & {:keys [deps args]}]
-  (unless (every? uuid? deps)
+  (when-not (every? uuid? deps)
           (throw (Exception. (str "Invalid operator dependency (must be UUID)."
                                   op " deps: " deps))))
   {:type op
@@ -145,9 +142,8 @@
   [id & [param-name]]
   (let [in (channel)
         out (map* (fn [v] {id v}) in)]
-    (on-closed in #(close out))
-    (flow-log "parameter" out)
-    (close-log "parameter" out)
+    (on-drained in #(close out))
+    (flow-log "parameter" id out)
   {:type :parameter
    :id id
    :in in
@@ -166,7 +162,10 @@
         left-out (:out left)
         sub-chans (atom [])
         all-closed (fn []
-                     (log/to :close "[receive] sub-chan closed")
+                     (if-not (empty? @sub-chans)
+                       (log/format :close "[receive] sub-chan closed (%d/%d open)"
+                                   (count (filter #(not (closed? %)) @sub-chans))
+                                   (count @sub-chans)))
                      (when (and (closed? left-out)
                               (every? closed? @sub-chans))
                        (close out)))]
@@ -175,11 +174,13 @@
       (fn [chan]
         (swap! sub-chans conj chan)
         (siphon chan out)
-        (on-closed chan all-closed)))
+        (on-closed chan #(log/to :flow "remote-channel closed"))
+        (on-drained chan #(do (log/to :flow "remote-channel drained")
+                            (all-closed)))))
 
     (siphon left-out out)
-    (on-closed left-out all-closed)
-    (flow-log "receive" out)
+    (on-drained left-out all-closed)
+    (flow-log "receive" id out)
 
   {:type :receive
    :id id
@@ -197,8 +198,8 @@
         out (channel)]
     (siphon left-out out)
     (siphon out dest)
-    (flow-log "send" out)
-    (on-closed left-out
+    (flow-log "send" id out)
+    (on-drained left-out
       #(do
          (log/to :close "[send] closed")
          (close dest))))
@@ -240,24 +241,24 @@
               (let [src-node (find-node src-id)]
                 (cond
                   (proxy-node? src-id)
-                  (let [proxy (:proxy src-node)]
+                  (let [proxy (:proxy src-node)
+                        res-chan (remote-sub-query plan id src-id proxy)
+                        combined-chan (map* #(merge pt %) res-chan)]
                     (log/format :flow "[traverse] [%s] proxy: %s " (trim-id src-id) proxy)
                     ; Send the remote-sub-query channel to the recv operator
-                    (enqueue recv-chan
-                             (map* #(merge pt %)
-                                   (remote-sub-query plan id src-id proxy))))
+                    (enqueue recv-chan combined-chan)
+                    (on-closed res-chan #(close combined-chan)))
 
                   :default
-                  (let [tgts (keys (get-edges src-id edge-pred-fn))]
+                  (let [tgts (keys (get-edges src-id edge-pred-fn))
+                        pts (map #(assoc pt id %) tgts)]
                     (log/format :flow "[traverse] %s - %s -> [%s]"
-                                src-id edge-predicate (apply str (interleave (map trim-id tgts)
-                                                                             (cycle " "))))
-                    (siphon (apply channel (map #(assoc pt id %) tgts))
-                            out)))))))))
+                                src-id edge-predicate
+                                (apply str (interpose " " (map trim-id tgts))))
+                    (apply enqueue out pts)))))))
+        (if (drained? in) (close out))))
 
-    (on-closed in #(do
-                     (log/to :op "[traverse] closed")
-                     (close out)))
+    (flow-log "traverse" id out)
     {:type :traverse
      :id id
      :src-key src-key
@@ -275,9 +276,9 @@
         out				(channel)]
     (siphon left-out right-in)
     (siphon right-out out)
-    (on-closed left-out #(close right-in))
-    (on-closed right-out #(close out))
-    (flow-log "join" out)
+    (on-drained left-out #(close right-in))
+    (on-drained right-out #(close out))
+    (flow-log "join" id out)
     {:type :join
      :id id
      :left left
@@ -297,14 +298,14 @@
         out (channel)
 				agg-fn (or agg-fn identity)]
     (siphon left-out buf)
-    (flow-log op-name left-out)
-    (on-closed left-out
+    (flow-log op-name id left-out)
+    (on-drained left-out
       (fn []
         (let [aggregated (agg-fn (channel-seq buf))]
           (doseq [item aggregated]
             (enqueue out item)))
         (close out)))
-    (flow-log op-name out)
+    (flow-log op-name id out)
     {:type :aggregate
      :id id
      :left left
@@ -387,8 +388,8 @@
                   result))
               left-out)
             out)
-    (on-closed left-out #(close out))
-    (flow-log "select" out)
+    (on-drained left-out #(close out))
+    (flow-log "select" id out)
     {:type :select
      :id id
      :select-key select-key
@@ -401,7 +402,7 @@
   properties for operations like select and sort that rely on property
   values already being in the PT map."
   [id left pt-key props]
-  (log/format :flow "[property] id: %s left: %s" id (:id left))
+  (log/format :op "[property] id: %s left: %s" id (:id left))
   (let [left-out (:out left)
         out (map* (fn [pt]
                     (let [node-id  (get pt pt-key)
@@ -415,8 +416,8 @@
                               vals     (select-keys node props)]
                           (assoc pt node-id (merge existing vals))))))
                   left-out)]
-    (on-closed left-out #(close out))
-    (flow-log "property" out)
+    (on-drained left-out #(close out))
+    (flow-log "property" id out)
   {:type :property
    :id id
    :left left
@@ -428,7 +429,7 @@
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties."
 	[id left projections]
-  (log/format :flow "project-op: %s" (seq projections))
+  (log/format :op "project-op: %s" (seq projections))
   (let [left-out (:out left)
         out (map* (fn [pt]
                     (when pt
@@ -443,8 +444,11 @@
                               (merge result (select-keys m props)))))
                         {} projections)))
                   left-out)]
-    (on-closed left-out #(close out))
-    (flow-log "project" out)
+    (on-closed left-out
+                (fn []
+                  (log/to :flow "project closing out................")
+                  (close out)))
+    (flow-log "project" id out)
     {:type :project
      :id id
      :projections projections
@@ -459,7 +463,8 @@
 	[id left n]
   (let [left-out (:out left)
         out (take* n left-out)]
-    (flow-log "limit" out)
+    (on-drained left-out #(close out))
+    (flow-log "limit" id out)
     {:type :limit
      :id id
      :left left

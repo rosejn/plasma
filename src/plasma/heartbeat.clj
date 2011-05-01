@@ -1,5 +1,5 @@
 (ns plasma.heartbeat
-  (:use [plasma core connection peer util config network]
+  (:use [plasma graph connection peer util config network]
         jiraph.graph)
   (:require [plasma.query :as q]
             [lamina.core :as lamina]

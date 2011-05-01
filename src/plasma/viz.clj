@@ -1,5 +1,5 @@
 (ns plasma.viz
-  (:use [plasma util core operator]
+  (:use [plasma util graph operator]
         jiraph.graph
         [clojure.contrib shell-out])
   (:require [logjam.core :as log]
@@ -35,14 +35,14 @@
   (let [props (if (coll? (:node-props options))
                 (select-keys props (:node-props options))
                 props)
-        key-vals (map 
+        key-vals (map
                    (fn [[k v]]
                      (str (if (keyword? k)
                             (name k)
-                            k) ": " 
+                            k) ": "
                           (if (uuid? v)
                             (trim-id v)
-                            v))) 
+                            v)))
                    props)
         prop-lbls (apply str (interpose " | " key-vals))]
     (str "[label=\"{ " prop-lbls "}\"];")))
@@ -69,7 +69,7 @@
   "Output the dot (graphviz) graph description for the given graph."
   [g options]
   (with-graph g
-    (let [nodes (filter 
+    (let [nodes (filter
                   #(not= "UUID:META" %)
                   (node-ids :graph))
           node-props (:node-props options)]
@@ -97,10 +97,10 @@
    (let [out-format (:out-format options OUT-FORMAT)
          edge-font-size (:edge-font-size options EDGE-FONT)
          node-font-size (:node-font-size options NODE-FONT)]
-   (sh "dot" 
+   (sh "dot"
        in
-       (str "-T" out-format) 
-       (str "-Efontsize=" edge-font-size) 
+       (str "-T" out-format)
+       (str "-Efontsize=" edge-font-size)
        (str "-Nfontsize=" node-font-size)
        "-o" out))))
 
@@ -120,10 +120,10 @@
   [g]
   (show-dot-graph g))
 
-(defn graph->browser 
+(defn graph->browser
   [g]
   (show-dot-graph g {:out-format "svg" :app "chromium-browser"}))
-  
+
 (defn- label-table
   [top bottom]
   (str "<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\">\n\t"
