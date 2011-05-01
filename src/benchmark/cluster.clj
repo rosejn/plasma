@@ -1,5 +1,5 @@
 (ns benchmark.cluster
-  (:use [plasma util core url connection peer bootstrap route viz]
+  (:use [plasma util graph url connection peer bootstrap route viz]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
@@ -26,47 +26,92 @@
       (bootstrap p strap-url))
     [strapper peers]))
 
-(defn gather-peers
-  [p n]
-  (doseq [{id :id url :proxy} (random-walk-n p n)]
-    (when-not (get-node p id)
-            (add-peer p id url))))
-
 (defn peer-vals
   [p]
   (query p (-> (q/path [peer [:net :peer]
                       data [peer :data]])
- ;            (q/order-by data :value)
+             (q/order-by data :value)
              (q/project [peer :id] [data :value])) {} 200))
 
-(defn trim-peers
-  [p n]
-  (let [pval (:value (first (query p (-> (q/path [d [:data]])
-                                       (q/project [d :value])))))
+(defn local-val
+  [p]
+  (:value (first (query p (-> (q/path [d [:data]])
+                            (q/project [d :value]))))))
+
+(defn closest-peers
+  [p]
+  (let [pval (local-val p)
         pvals (peer-vals p)]
-    (take n (sort-by #(Math/abs (- pval (:value %)))
-                     pvals))))
+    (sort-by #(Math/abs (- pval (:value %)))
+             pvals)))
 
 (defn get-peers
   [p]
-  (query p (q/path [:net :peer])))
+  (query p (-> (q/path [peer [:net :peer]])
+             (q/project [peer :id :proxy]))))
 
-(def N-CLUSTERS 3)
-(def CLUSTER-SIZE 4)
+(defn gather-peers
+  [p n]
+  (let [start-id (:id (first (closest-peers p)))
+        start-con (peer-connection p (:proxy (get-node p start-id)))
+        new-peers (concat (get-peers start-con) (random-walk-n p n))
+        pids (set (map (fn [{id :id url :proxy}] [id url])
+                       new-peers))]
+    (doseq [{id :id url :proxy} new-peers]
+      (when-not (get-node p id)
+        (println "adding peer: " (trim-id id))
+        (add-peer p id url)))))
+
+(defn trim-peers
+  [p n]
+  (let [dead-peers (drop n (closest-peers p))]
+    (doseq [{id :id} dead-peers]
+      (with-peer-graph
+        (remove-node id)))))
+
+(defn cluster-distance
+  [p c-size]
+  (let [myval (local-val p)]
+    (reduce (fn [mem v] (+ mem (Math/abs (- myval v))))
+            0
+            (take c-size (map :value (closest-peers p))))))
+
+(defn print-clusters
+  [peers cluster-size]
+  (doseq [p peers]
+    (let [closest (map :value (closest-peers p))
+          [in-cluster out-cluster] (split-at cluster-size closest)]
+    (println (format "%s: %s -- %s"
+                     (local-val p)
+                     (vec in-cluster)
+                     (vec out-cluster))))))
+
+(defn print-peer
+  [p]
+  (println (format "%s: %s"
+                   (local-val p)
+                   (vec (map :value (closest-peers p))))))
 
 (defn cluster-benchmark
-  []
-  (let [[strapper peers] (cluster-peers N-CLUSTERS CLUSTER-SIZE)]
+  [n-clusters cluster-size n-cycles walk-len]
+  (let [[strapper peers] (cluster-peers n-clusters cluster-size)]
     (Thread/sleep (* 3 RETRY-PERIOD))
     (try
-      (doseq [p peers]
-        (future (gather-peers p 12)))
-      (Thread/sleep 3000)
-      (doseq [p peers]
-        (future (gather-peers p 12)))
-      [strapper peers]
-      #_(finally
+      (dotimes [i n-cycles]
+        (doseq [p peers]
+          (future (gather-peers p walk-len)))
+        (Thread/sleep 1000)
+        (doseq [p peers]
+          (future (trim-peers p 6)))
+        (println "Distance: "
+                 (reduce +
+                         (map #(cluster-distance % cluster-size) peers)))
+        (doseq [p peers]
+          (print-peer p))
+        (flush))
+      (print-clusters peers cluster-size)
+      (finally
         (close strapper)
         (close-peers peers)))))
 
-;(doseq [p peers] (gather-peers p 12))
+;(cluster-benchmark 4 3 8 12)

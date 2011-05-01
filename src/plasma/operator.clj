@@ -157,7 +157,7 @@
   Network receive channels are sent to the remotes channel so we can wire them into
   the running query.
   "
-  [id left remotes]
+  [id left remotes timeout]
   (let [out (channel)
         left-out (:out left)
         sub-chans (atom [])
@@ -174,6 +174,7 @@
       (fn [chan]
         (swap! sub-chans conj chan)
         (siphon chan out)
+        (channel-timeout chan timeout)
         (on-closed chan #(log/to :flow "remote-channel closed"))
         (on-drained chan #(do (log/to :flow "remote-channel drained")
                             (all-closed)))))

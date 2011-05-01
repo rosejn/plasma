@@ -193,6 +193,8 @@
         root-op (:root plan)
         projections (doall (map (fn [[bind-sym & props]]
                            (let [project-key (get (:pbind plan) bind-sym)]
+                             (when (nil? project-key)
+                               (throw (Exception. (format "Error trying to project using an invalid path binding: %s" bind-sym))))
                              (if props
                                (concat [project-key] props)
                                [project-key])))
@@ -437,7 +439,7 @@
 
 (defn- op-node
   "Instantiate an operator node based on a query node."
-  [plan ops recv-chan op-node]
+  [plan ops recv-chan timeout op-node]
   (let [{:keys [type id deps args]} op-node
         deps-ops (map ops deps)
         _ (log/format :op-node "type: %s\nid: %s\ndeps: %s\nargs: %s " type id deps args)
@@ -454,7 +456,7 @@
       (apply op-fn id args)
 
       :receive
-      (op-fn id (first deps-ops) recv-chan)
+      (op-fn id (first deps-ops) recv-chan timeout)
 
       (apply op-fn id (first deps-ops) args))))
 
@@ -488,23 +490,23 @@
 (defn- build-query
   "Iterate over the query operators, instantiating each one after its dependency
   operators have been instantiated."
-  [plan]
+  [plan timeout]
   (let [recv-chan (channel)
         sorted (op-dep-list plan)]
     (log/to :build "[build-query] sorted: " (seq sorted))
     (reduce
       (fn [ops op]
         (assoc ops (:id op)
-               (op-node plan ops recv-chan op)))
+               (op-node plan ops recv-chan timeout op)))
       {}
       sorted)))
 
 (defn query-tree
   "Convert a query plan into a query execution tree."
-  [plan]
+  [plan timeout]
   {:type :query-tree
    :id (:id plan)
-   :ops (build-query plan)
+   :ops (build-query plan timeout)
    :root (:root plan)
    :params (:params plan)})
 
@@ -563,21 +565,22 @@
         timeout (or timeout 1000)]
     (lazy-channel-seq chan timeout)))
 
+(def MAX-QUERY-TIME (* 3 1000)) ; in ms
+
 (defn query-channel
   "Issue a query to the currently bound graph, and return a channel
   representing the results."
   ([plan]
    (query-channel plan {}))
-  ([plan params]
+  ([plan params] (query-channel plan params MAX-QUERY-TIME))
+  ([plan params timeout]
    (let [plan (optimize-plan plan)
-         tree (query-tree plan)
+         tree (query-tree plan timeout)
          param-map (or params {})
          res-chan (get-in (:ops tree) [(:root tree) :out])]
      (log/to :stream "query-channel:\n" (with-out-str (print-query plan)))
      (run-query tree param-map)
      res-chan)))
-
-(def MAX-QUERY-TIME (* 3 1000)) ; in ms
 
 (defn query
   "Issue a query to the currently bound graph."
@@ -587,11 +590,10 @@
    (query plan params MAX-QUERY-TIME))
   ([plan params timeout]
    (let [plan (with-result-project plan)
-         res-chan (query-channel plan params)
+         res-chan (query-channel plan params timeout)
          p (promise)]
      (on-closed res-chan
        (fn [] (deliver p (channel-seq res-chan))))
-     (channel-timeout res-chan timeout)
      @p)))
 
 (defn- with-send-channel

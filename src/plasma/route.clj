@@ -11,19 +11,18 @@
 (defn random-walk-n
   "Starting at peer p, do an n hop random walk, returning {:id :proxy} maps
   from all the peers traversed."
-  [p n]
-  (map first
-       (take n
-             (drop 1
-                   (iterate
-                     (fn [[_ g]]
-                       (let [q (->
-                                 (q/path [peer [:net :peer]])
-                                 (q/project [peer :id :proxy])
-                                 (q/choose 1))
-                             res (first (query g q))]
-                         [res (peer-connection p (:proxy res))]))
-                     [nil p])))))
+  ([p n] (random-walk-n p n p))
+  ([p n start-peer]
+   (let [walk-fn (fn [[_ g]]
+                   (let [q (->
+                             (q/path [peer [:net :peer]])
+                             (q/project [peer :id :proxy])
+                             (q/choose 1))
+                         res (first (query g q))]
+                     [res (peer-connection p (:proxy res))]))]
+     (map first
+          (take n (drop 1
+                        (iterate walk-fn [nil start-peer])))))))
 
 (defn greedy-iter
   [])

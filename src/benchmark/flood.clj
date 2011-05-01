@@ -1,5 +1,5 @@
 (ns benchmark.flood
-  (:use [plasma util url core connection peer viz]
+  (:use [plasma util url graph connection peer viz]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]

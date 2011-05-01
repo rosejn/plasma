@@ -1,5 +1,5 @@
 (ns benchmark.traversal
-  (:use [plasma util core connection peer viz]
+  (:use [plasma util graph connection peer viz]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
