@@ -18,7 +18,7 @@
                 (fn [i]
                   (clear-graph)
                   (let [root-id (root-node-id)]
-                    (node-assoc root-id :peer-id i)
+                    (assoc-node root-id :peer-id i)
                     (make-edge root-id (make-node) :net))))]
     (is (= 1 (count (query strapper (q/path [:net]) 200))))
     (try
@@ -41,7 +41,7 @@
   (fn [i]
   (clear-graph)
   (let [root-id (root-node-id)]
-  (node-assoc root-id :peer-id i)
+  (assoc-node root-id :peer-id i)
   (make-edge root-id (make-node) :net)))))
 
   (bootstrap (second peers) (plasma-url "localhost" 2234))

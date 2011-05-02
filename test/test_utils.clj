@@ -6,6 +6,16 @@
 
 (def G (open-graph "db/test"))
 
+(defmacro with-nodes! [bindings & body]
+  (let [nodes (map (fn [[node-sym props]]
+                     (let [props (if (keyword? props)
+                                   {:label props}
+                                   props)]
+                       [node-sym `(make-node ~props)]))
+                   (partition 2 bindings))
+        nodes (vec (apply concat nodes))]
+    `(let ~nodes ~@body)))
+
 (defn test-graph []
   (let [root-id (root-node-id)]
     (with-nodes! [net      :net

@@ -126,7 +126,7 @@
                       (with-peer-graph p
                         (clear-graph)
                         (let [root-id (root-node-id)]
-                          (node-assoc root-id :peer-id n)
+                          (assoc-node root-id :peer-id n)
                           (with-nodes! [net :net
                                         docs :docs
                                         a {:label (str "a-" n) :score 0.1}

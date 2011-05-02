@@ -6,10 +6,12 @@
         test-utils)
   (:require [logjam.core :as log]))
 
+(def TIMEOUT 200)
+
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
         plan (with-result-project plan)
-        tree (query-tree plan)]
+        tree (query-tree plan TIMEOUT)]
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
            (set (map (comp :label find-node :id)
@@ -98,9 +100,9 @@
                         synth [sesh :synth]]
                    (where (= (:label synth) :kick)))
                (project [sesh :label]))
-        tree (query-tree plan)
+        tree (query-tree plan TIMEOUT)
         optimized (optimize-plan plan)
-        opt-tree (query-tree optimized)]
+        opt-tree (query-tree optimized TIMEOUT)]
     ;(print-query plan)
     ;(print-query optimized)
     (run-query tree {})

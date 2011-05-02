@@ -45,7 +45,7 @@
         j2 (join-op (uuid) j1 t2)
         t3 (traverse-op (uuid) nil nil (:id t2) :synth)
         j3 (join-op (uuid) j2 t3)
-        r1 (receive-op (uuid) j3 (channel))
+        r1 (receive-op (uuid) j3 (channel) 200)
         tree {:p1 p1
               :t1 t1
               :j1 j1
