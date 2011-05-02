@@ -30,4 +30,13 @@
       (finally
         (deleter)))))
 
+(deftest event-test
+  (let [dest-chan (lamina/channel)]
+    (lamina/siphon (node-event-channel "foo") dest-chan)
+    (#'plasma.graph/node-event "foo" {:a 1 :b 2} {:a 10 :b 20})
+    (Thread/sleep 10)
+    (println dest-chan)
+    (is (= 20 (get-in (take 1 (lamina/lazy-channel-seq dest-chan 100))
+                      [:new-props :b])))))
+
 (use-fixtures :once test-fixture)

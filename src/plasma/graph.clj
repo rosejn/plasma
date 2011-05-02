@@ -10,6 +10,42 @@
 ; Special uuid used to query for a graph's root node.
 (def ROOT-ID "UUID:ROOT")
 
+(defonce node-events* (lamina/channel))
+(defonce edge-events* (lamina/channel))
+
+(defn node-event-channel
+  [src-id]
+  (lamina/filter*
+    (fn [node-event]
+      (= (:src-id node-event) src-id))
+    node-events*))
+
+(defn edge-event-channel
+  ([id] (edge-event-channel id nil))
+  ([id pred]
+   (lamina/filter*
+     (fn [{:keys [src-id tgt-id props]}]
+       (and (= src-id id)
+            (cond
+              (keyword? pred) (= (:label props) pred)
+              (fn? pred)      (pred props)
+              (nil? pred)     true)))
+     edge-events*)))
+
+(defn- node-event
+  [src-id old-props new-props]
+  (lamina/enqueue node-events*
+    {:src-id src-id
+     :old-props old-props
+     :new-props new-props}))
+
+(defn- edge-event
+  [src-id tgt-id props]
+  (lamina/enqueue edge-events*
+    {:src-id src-id
+     :tgt-id tgt-id
+     :props props}))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Node functions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
