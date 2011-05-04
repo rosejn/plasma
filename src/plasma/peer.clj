@@ -42,28 +42,6 @@
     used as the input to the iteration.")
 )
 
-; Add support for specifying the binding variable name, rather than
-; only using the ROOT-ID.
-
-(comment
-  query-iter-n
-  query-iter-until
-  query-iter-while
-  query-recur-n
-  query-recur-until
-  query-recur-while
-
-  (iter-until-query
-    [this q] [this pred q] [this pred q params]
-  "Execute a query iteratively until the p")
-
-  (recur-n-query
-    [this iq] [this n q] [this n q params])
-
-  (recur-until-query
-    [this q] [this pred q] [this pred q params]))
-
-
 (def *manager* nil)
 (def DEFAULT-HTL 50)
 
@@ -250,13 +228,35 @@
 
 (defmethod stream-handler 'query-channel
   [peer ch req]
-  (log/to :peer "stream-handler query-channel: " req)
+  (log/to :peer "[stream-handler] query-channel: " req)
   (let [res-chan (apply query-channel peer (:params req))]
     (lamina/siphon res-chan ch)
     (lamina/on-drained res-chan
       (fn []
-        (log/to :stream "stream-handler closing channel")
-        (lamina/close ch)))))
+        (lamina/close ch)
+        (log/to :peer "[stream-handler] query-channel: closed")))))
+
+(defmethod stream-handler 'node-event-channel
+  [peer ch req]
+  (log/to :peer "[stream-handler] node-event-channel: " req)
+  (let [res-chan (with-peer-graph peer
+                   (apply node-event-channel (:params req)))]
+    (lamina/siphon res-chan ch)
+    (lamina/on-drained res-chan
+      (fn []
+        (lamina/close ch)
+        (log/to :peer "[stream-handler] node-event-channel: closed")))))
+
+(defmethod stream-handler 'edge-event-channel
+  [peer ch req]
+  (log/to :peer "[stream-handler] edge-event-channel: " req)
+  (let [res-chan (with-peer-graph peer
+                   (apply edge-event-channel (:params req)))]
+    (lamina/siphon res-chan ch)
+    (lamina/on-drained res-chan
+      (fn []
+        (lamina/close ch)
+        (log/to :peer "[stream-handler] edge-event-channel: closed")))))
 
 (defn- stream-request-handler
   [peer [ch req]]
@@ -331,6 +331,16 @@
    (log/to :peer "[peer-query-channel] starting query: " (:id q))
    (let [s-chan (stream con 'query-channel [q params])]
      s-chan)))
+
+(defn peer-node-event-channel
+  [con src-id]
+  (stream con 'node-event-channel [src-id]))
+
+; TODO: Use query predicate parser to transmit serialized predicates
+(defn peer-edge-event-channel
+  ([con src-id] (peer-edge-event-channel con src-id nil))
+  ([con src-id pred]
+   (stream con 'edge-event-channel [src-id pred])))
 
 (defn peer-query
   "Send a query to the given peer.  Returns a constant channel

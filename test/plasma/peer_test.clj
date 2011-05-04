@@ -226,6 +226,32 @@
           (close p1)
           (close p2)))))
 
+(deftest peer-graph-event-test
+  (let [port (+ 10000 (rand-int 10000))
+        local (peer {:path "db/p1" :port port})
+        root-id (:id (get-node local ROOT-ID))]
+    (try
+      (reset-peer local)
+      (let [n-id (with-peer-graph local (make-node))
+            con (get-connection (connection-manager) (plasma-url "localhost" port))
+            n-chan (peer-node-event-channel con n-id)
+            e-chan (peer-edge-event-channel con n-id :test)]
+        (Thread/sleep 50)
+        (with-peer-graph local
+          (dotimes [i 10]
+            (assoc-node n-id :val i))
+          (dotimes [i 10]
+            (make-edge n-id (make-node) {:label :test :val i})))
+        (let [r1 (lamina/channel-seq n-chan 200)
+              r2 (lamina/channel-seq e-chan 200)]
+          (is (= 10 (count r1) (count r2)))
+          (is (= (range 10)
+                 (map (comp :val :props) r1)))
+          (is (= (range 10)
+                 (map (comp :val :props) r2)))))
+      (finally
+        (close local)))))
+
 (comment
 (def p (peer {:port 1234}))
 (def con (get-connection (connection-manager) (plasma-url "localhost" 1234)))

@@ -4,6 +4,7 @@
     [plasma.jiraph mem-layer]
     [clojure.contrib.core :only (dissoc-in)])
   (:require
+    [logjam.core :as log]
     [jiraph.graph :as jiraph]
     [lamina.core :as lamina]))
 
@@ -12,6 +13,14 @@
 
 (defonce node-events* (lamina/channel))
 (defonce edge-events* (lamina/channel))
+(defonce graph-events* (lamina/channel))
+
+(lamina/siphon node-events* graph-events*)
+(lamina/siphon edge-events* graph-events*)
+
+(lamina/receive-all graph-events*
+  (fn [event]
+    (log/to :graph-event event)))
 
 (defn node-event-channel
   [src-id]
@@ -33,16 +42,16 @@
      edge-events*)))
 
 (defn- node-event
-  [src-id old-props new-props]
+  [src-id new-props]
   (lamina/enqueue node-events*
     {:src-id src-id
-     :old-props old-props
-     :new-props new-props}))
+     :props new-props}))
 
 (defn- edge-event
   [src-id tgt-id props]
   (lamina/enqueue edge-events*
-    {:src-id src-id
+    {:
+     :src-id src-id
      :tgt-id tgt-id
      :props props}))
 
@@ -100,8 +109,10 @@ For example:\n\t(with-graph G (find-node id))\n")))
 
 (defn assoc-node
   "Associate key/value pairs with a given node id."
-  [uuid & key-vals]
-  (apply jiraph/assoc-node! :graph uuid (apply hash-map key-vals)))
+  [id & key-vals]
+  (let [[old-props new-props] (apply jiraph/assoc-node! :graph
+                                     id (apply hash-map key-vals))]
+    (node-event id new-props)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Edge functions
@@ -123,7 +134,8 @@ For example:\n\t(with-graph G (find-node id))\n")))
                      (contains? label-or-props :label)) label-or-props
                 :default
                 (throw (Exception. "make-edge requires either a keyword label or a map containing the :label property.")))]
-    (jiraph/update-node! :graph src #(assoc-in % [:edges tgt] props))))
+    (jiraph/update-node! :graph src #(assoc-in % [:edges tgt] props))
+    (edge-event src tgt props)))
 
 (defn remove-edge
   "Remove the edge going from src to tgt.  Optionally takes a predicate
