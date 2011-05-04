@@ -24,11 +24,12 @@
     (try
       (doseq [p peers]
         (bootstrap p strap-url))
-      (Thread/sleep (* 2.5 RETRY-PERIOD))
+      (Thread/sleep 2000)
       (let [all-peers (query strapper (q/path [:net :peer]))
-            p-count (first (query (last peers) (q/count* (q/path [:net :peer])) 200))]
+            p-counts (map (comp first #(query % (q/count* (q/path [:net :peer])) 200))
+                          peers)]
         (is (= n-peers (count all-peers)))
-        (is (= N-BOOTSTRAP-PEERS p-count)))
+        (is (every? #(>= % N-BOOTSTRAP-PEERS) p-counts)))
       (finally
         (close strapper)
         (close-peers peers)))))

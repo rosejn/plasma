@@ -71,6 +71,7 @@
                                 (q/project [peer :proxy :id])
                                 (q/choose N-BOOTSTRAP-PEERS)))]
      (log/to :bootstrap "n: " n "\n"
+             "n-retries: " n-retries "\n"
              "new-peers: " (seq new-peers))
      (doseq [{url :proxy id :id} new-peers]
        (when-not (get-node p id)
@@ -83,7 +84,7 @@
                (< n-retries MAX-RETRIES)
                (< n-peers N-BOOTSTRAP-PEERS))
          (schedule (min MAX-RETRY-PERIOD (* RETRY-PERIOD (Math/pow n-retries 1.5)))
-                   #(add-bootstrap-peers p con
+                   #(add-bootstrap-peers p boot-url
                                          (- N-BOOTSTRAP-PEERS n-peers)
                                          (inc n-retries))))))))
 
@@ -102,6 +103,6 @@
 
 (defn bootstrap
   [p boot-url]
-  (schedule 0 #(bootstrap* p boot-url)))
+  (schedule 1 #(bootstrap* p boot-url)))
 
 

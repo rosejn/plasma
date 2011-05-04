@@ -44,13 +44,14 @@
 (defn- node-event
   [src-id new-props]
   (lamina/enqueue node-events*
-    {:src-id src-id
+    {:type :edge-event
+     :src-id src-id
      :props new-props}))
 
 (defn- edge-event
   [src-id tgt-id props]
   (lamina/enqueue edge-events*
-    {:
+    {:type :edge-event
      :src-id src-id
      :tgt-id tgt-id
      :props props}))

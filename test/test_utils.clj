@@ -79,7 +79,7 @@
 (defn bootstrapped-peers
   [n]
   (let [port (+ 5000 (rand-int 5000))
-        strapper (bootstrap-peer "db/strapper" {:port port})
+        strapper (bootstrap-peer {:path "db/strapper" :port port})
         strap-url (plasma-url "localhost" port)
         peers (make-peers n (inc port)
                 (fn [i]

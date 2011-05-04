@@ -55,7 +55,7 @@
     (let [r1 (lamina/channel-seq c1 10)
           r2 (lamina/channel-seq c2 10)
           r3 (lamina/channel-seq c3 10)]
-      (println "r3: " r3)
+      ;(println "r3: " r3)
       (is (= 100 (count r1) (count r2)))
       (is (= 50 (count r3)))
       (is (= (range 100)
