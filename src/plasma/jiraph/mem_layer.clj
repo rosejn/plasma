@@ -31,7 +31,7 @@
    :get-revisions  mem-get-revisions
    :get-incoming   mem-get-incoming})
 
-(defn- mem-txn-wrap [layer f] f)
+(defn- mem-txn-wrap [layer f] (dosync f))
 
 (def mem-txn-impl
   {:txn-wrap mem-txn-wrap})

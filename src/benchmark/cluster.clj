@@ -71,17 +71,22 @@
 
 (defn cluster-distance
   [p c-size]
-  (let [myval (local-val p)]
-    (reduce (fn [mem v] (+ mem (Math/abs (- myval v))))
+  (let [myval (local-val p)
+        cluster-vals (take c-size (map :value (closest-peers p)))]
+    (println (format "%4s: %s" myval (vec cluster-vals)))
+    (float
+      (/ (reduce (fn [mem v]
+              (+ mem (Math/abs (- myval v))))
             0
-            (take c-size (map :value (closest-peers p))))))
+            cluster-vals)
+       c-size))))
 
 (defn print-clusters
   [peers cluster-size]
   (doseq [p peers]
     (let [closest (map :value (closest-peers p))
           [in-cluster out-cluster] (split-at cluster-size closest)]
-    (println (format "%s: %s -- %s"
+    (println (format "%4s: %s -- %s"
                      (local-val p)
                      (vec in-cluster)
                      (vec out-cluster))))))
@@ -100,13 +105,14 @@
       (dotimes [i n-cycles]
         (doseq [p peers]
           (future (gather-peers p walk-len)))
-        (Thread/sleep 1000)
+        (Thread/sleep 2000)
         (doseq [p peers]
           (future (trim-peers p 6)))
         (println "Distance: "
                  (reduce +
                          (map #(cluster-distance % cluster-size) peers)))
-        (doseq [p peers]
+        #_(print-clusters peers cluster-size)
+        #_(doseq [p peers]
           (print-peer p))
         (flush))
       (print-clusters peers cluster-size)

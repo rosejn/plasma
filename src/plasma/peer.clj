@@ -42,11 +42,18 @@
     used as the input to the iteration.")
 )
 
+(defprotocol IPeer
+  (peer-id [this] "Get the UUID for this peer."))
+
 (def *manager* nil)
 (def DEFAULT-HTL 50)
 
 (defrecord PlasmaPeer
   [manager graph url port listener status options] ; peer-id, port, max-peers
+  IPeer
+  (peer-id
+    [this]
+    (with-peer-graph this (root-node-id)))
 
   IQueryable
   (get-node
@@ -363,6 +370,10 @@
 (defn peer-iter-n-query
   [con q n])
 
+(defn peer-peer-id
+  [con]
+  (get-node con ROOT-ID))
+
 (extend plasma.connection.Connection
   IQueryable
   {:get-node peer-get-node
@@ -370,7 +381,10 @@
    :query peer-query
    :query-channel peer-query-channel
    :recur-query peer-recur-query
-   :iter-n-query peer-iter-n-query})
+   :iter-n-query peer-iter-n-query}
+
+  IPeer
+  {:peer-id peer-peer-id})
 
 (defmethod peer-sender :default
   [url]

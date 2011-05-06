@@ -353,7 +353,7 @@
                  [(apply max-key key-fn arg-seq)])]
     (aggregate-op id left max-fn "max")))
 
-(def PREDICATE-OPS
+(def PREDICATE-OP-MAP
   {'= =
    '== ==
    'not= not=
@@ -380,7 +380,7 @@
                       node    (get pt node-id)
                       {:keys [property operator value]} predicate
                       pval (get node property)
-                      op (get PREDICATE-OPS operator)
+                      op (ns-resolve *ns* operator)
                       result (op pval value)]
                   (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s"
                               operator property value

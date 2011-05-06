@@ -26,12 +26,14 @@
      :property property
      :value value}))
 
+(def PREDICATE-OPS #{'= '== 'not= '< '> '>= '<= })
+
 (defn- where-predicate
   "Converts a query where predicate form into a predicate object."
   [form]
   (let [op (first form)]
     (cond
-      (#{'= '< '> '>= '<=} op) (basic-pred form)
+      (PREDICATE-OPS op) (basic-pred form)
       :default (throw (Exception. (str "Unknown operator in where clause: " op))))))
 
 (defn- where->predicates
@@ -182,6 +184,12 @@
 
 (defn project*
   [plan args]
+  (when-not (every? #(or (symbol? %)
+                         (and (vector? %)
+                              (symbol? (first %))))
+                    args)
+    (throw (Exception.
+             (format "Trying to project with invalid arguments.  Project requires either a path binding variable (symbol) or a vector containing a binding var and one or more keyword properties to project on.  (e.g. (project person [article :author :title]))"))))
   (let [projections (map #(if (symbol? %) [%] %) args)
         _ (log/to :query "[project] projections:" (seq projections))
         plan (reduce
@@ -298,6 +306,25 @@
       (selection-ops)
       (parameterized))))
 
+(defn- eval-path-binding
+  "Iterate through the path expression evaluating all symbols that aren't
+  from previous path binding vars."
+  [paths]
+  (vec (second
+         (reduce
+           (fn [[known-syms new-paths] [bsym path-segs]]
+             (let [sym `'~bsym
+                   known-syms (conj known-syms bsym)
+                   segs (vec (map
+                               (fn [seg]
+                                 (if (known-syms seg)
+                                   `'~seg
+                                   `~seg)) path-segs))
+                   new-paths (conj new-paths [sym segs])]
+               [known-syms new-paths]))
+           [#{} []]
+           paths))))
+
 (defmacro path [& q]
   (let [[bindings body]
         (cond
@@ -316,21 +343,8 @@
                        "Invalid path expression:
                        Missing either a binding or a path operator.")))
         paths (partition 2 bindings)
-        paths (vec (second
-                     (reduce
-                       (fn [[known-syms new-paths] [bsym path-segs]]
-                         #_(println "known: " known-syms "bsym: " bsym "psegs: " path-segs)
-                         (let [sym `'~bsym
-                               known-syms (conj known-syms bsym)
-                               segs (vec (map
-                                           (fn [seg]
-                                             (if (known-syms seg)
-                                               `'~seg
-                                               `~seg)) path-segs))
-                               new-paths (conj new-paths [sym segs])]
-                           [known-syms new-paths]))
-                       [#{} []]
-                       paths)))]
+        path-vars (set (map first paths))
+        paths (eval-path-binding paths)]
     `(path* ~paths (quote ~body))))
 
 (defn query?

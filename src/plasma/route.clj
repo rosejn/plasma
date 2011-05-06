@@ -29,7 +29,9 @@
 
 (defn id-bits [id n-bits]
   (mod
-    (hex->int (hex (sha1 id)))
+    (cond
+      (string? id) (hex->int (hex (sha1 id)))
+      (number? id) id)
     (expt 2 n-bits)))
 
 (defn chord-distance [a b n-bits]
@@ -40,27 +42,75 @@
             max-n)
          max-n)))
 
-(defn kademlia-distance [a b n-bits]
+(defn kademlia-distance
+  "Compute the kademlia distance between two peer-ids hashed into
+  an n-bit address space."
+  [a b n-bits]
   (let [a (id-bits a n-bits)
         b (id-bits b n-bits)]
     (bit-xor a b)))
 
-(defn closest-peer
-  [p tgt-id]
-  (let [peers (query p (-> (q/path [p [:net :peer]])
-                         (q/project 'p :id :proxy)))]
-    (take 1 (sort-by #(kademlia-distance tgt-id (:id %)) peers))))
+(defn to-binary
+  "Convert a Number to a binary string."
+  [v]
+  (.toString (BigInteger/valueOf v) 2))
+
+(defn rand-bits
+  [n]
+  (apply str (take n (repeatedly (partial rand-int 2)))))
+
+(defn rand-bucket-id
+  "Returns a random ID within the range of bucket B."
+  [local-id n n-bits]
+  (let [id (id-bits local-id n-bits)
+        flip (- n-bits (inc n))
+        id (bit-flip id flip)
+        id (reduce #(if (zero? (rand-int 2))
+                      (bit-flip %1 %2)
+                      %1)
+                   id
+                   (range 0 flip))]
+    id))
+
+(defn k-bucket
+  "Determine which bucket the test-id should reside in relation
+  to the local-id while using an n-bit address space."
+  [local-id test-id n-bits]
+  (let [id (to-binary (id-bits local-id n-bits))
+        test-id (to-binary (id-bits test-id n-bits))]
+    (count (take-while (fn [[a b]] (= a b))
+                       (map list id test-id)))))
+
+; TODO: Ideally we could put this distance calculation in the query
+; to limit the number of nodes sent...
+(defn closest-peers
+  "Returns the closest n peers (proxy node) to the tgt-id:
+  {:id <peer-id> :proxy <peer-url>}
+  "
+  [p n tgt-id n-bits]
+  (let [peers (query p (-> (q/path [p [:net :bucket :peer]])
+                         (q/project [p :id :proxy])))]
+    (take n (sort-by #(kademlia-distance tgt-id (:id %) n-bits) peers))))
+
+(def ALPHA 3)
 
 (defn dht-lookup
-  [p tgt-id]
-  (let [root (get-node p ROOT-ID)]
-    (loop [closest (assoc root
-                          :con p)]
-      (let [cp (closest-peer (:con closest) tgt-id)]
-        (if (< (kademlia-distance tgt-id (:id cp))
-               (kademlia-distance tgt-id (:id closest)))
-          (recur (assoc cp :con (peer-connection p (:proxy cp))))
-          closest)))))
+  [p tgt-id n-bits]
+  (let [root {:id (peer-id p)}]
+    (loop [peers [p]
+           closest root]
+      (println "[dht-lookup] cur: " (k-bucket (:id closest) tgt-id n-bits))
+      (let [closest-dist (kademlia-distance tgt-id (:id closest) n-bits)
+            cps (flatten (map #(closest-peers % ALPHA tgt-id n-bits) peers))
+            cps (map #(assoc % :distance
+                             (kademlia-distance tgt-id (:id %) n-bits))
+                     cps)
+            cps (filter #(< (:distance %) closest-dist) cps)
+            sorted (sort-by :distance cps)]
+        (if (empty? sorted)
+          (assoc closest :distance (kademlia-distance (:id root) (:id closest) n-bits))
+          (recur (map #(peer-connection p (:proxy %)) sorted)
+                 (first sorted)))))))
 
 (defn dht-join
   "Find peers with the addrs that fit in the slots of our peer table.
