@@ -1,7 +1,6 @@
 * pull where form out into separate macro
 * make-node and make-edge query forms to not be doing with-peer-graph
 * and / or / not in predicates
-* regexp based path expression segments
 
 * create a link query type to connect one or more nodes
 

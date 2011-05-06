@@ -212,8 +212,11 @@
   "Create an edge predicate function, based on the type of predicate object supplied."
   [pred]
   (cond
-    (keyword? pred) #(= pred (:label %1))
-    (regexp? pred) #(re-find pred %)
+    (keyword? pred) #(= pred (:label %))
+    (regexp? pred) #(re-find pred (let [lbl (:label %)]
+                                    (if (keyword? lbl)
+                                      (name lbl)
+                                      lbl)))
     (fn? pred) pred
     :default
     (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
