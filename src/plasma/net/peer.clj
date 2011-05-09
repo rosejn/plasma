@@ -1,10 +1,11 @@
-(ns plasma.peer
-  (:use [plasma config util graph connection network presence rpc]
+(ns plasma.net.peer
+  (:use [plasma config util graph api]
+        [plasma.net connection address presence rpc]
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
             [jiraph.graph :as jiraph]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 (defmacro with-peer-graph [p & body]
   `(let [g# (:graph ~p)]
@@ -12,38 +13,6 @@
      (if (= jiraph/*graph* g#)
        (do ~@body)
        (jiraph/with-graph g# ~@body)))))
-
-(defprotocol IQueryable
-  ; TODO: change this to find-node once core and query are refactored...
-  (get-node
-    [this id]
-    "Lookup a node by UUID.")
-
-  (link
-    [this src node-map edge-props]
-    "Create an edge from src to a new node with the given edge properties.")
-
-  (query
-    [this q] [this q params] [this q params timeout]
-    "Issue a query against the peer's graph.")
-
-  (query-channel
-    [this q] [this q params]
-    "Issue a query against the graph and return a channel onto which the
-    results will be enqueued.")
-
-  (recur-query
-    [this q] [this pred q] [this pred q params]
-    "Recursively execute a query.")
-
-  (iter-n-query
-    [this iq] [this n q] [this n q params]
-    "Execute a query iteratively, n times. The output of one execution is
-    used as the input to the iteration.")
-)
-
-(defprotocol IPeer
-  (peer-id [this] "Get the UUID for this peer."))
 
 (def *manager* nil)
 (def DEFAULT-HTL 50)
@@ -374,7 +343,7 @@
   [con]
   (get-node con ROOT-ID))
 
-(extend plasma.connection.Connection
+(extend plasma.net.connection.Connection
   IQueryable
   {:get-node peer-get-node
    :link peer-link

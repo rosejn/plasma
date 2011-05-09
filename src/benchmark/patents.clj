@@ -1,11 +1,12 @@
 (ns benchmark.patents
-  (:use [plasma util graph url connection peer bootstrap route viz]
+  (:use [plasma util graph viz]
+        [plasma.net url connection peer bootstrap route]
         [clojure test stacktrace]
         test-utils
         [clojure.java.io :only (reader)]
         [clojure.contrib.str-utils2 :only (split)])
   (:require [logjam.core :as log]
-            [plasma.query :as q])
+            [plasma.query.core :as q])
   (:import [java.io FileInputStream BufferedInputStream
             BufferedReader InputStreamReader File]
            [java.util.zip GZIPInputStream]))

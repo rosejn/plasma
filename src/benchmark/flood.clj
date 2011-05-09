@@ -1,9 +1,10 @@
 (ns benchmark.flood
-  (:use [plasma util url graph connection peer viz]
+  (:use [plasma util url viz]
+        [plasma.net graph connection peer]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 ; Shows a two tier flood query where the path expression crosses two proxy nodes
 

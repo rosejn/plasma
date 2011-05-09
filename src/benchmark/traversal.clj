@@ -1,9 +1,10 @@
 (ns benchmark.traversal
-  (:use [plasma util graph connection peer viz]
+  (:use [plasma util graph viz]
+        [plasma.net connection peer]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 (defn criss-cross-graph []
   (let [root (root-node-id)

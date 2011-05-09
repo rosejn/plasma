@@ -1,9 +1,10 @@
 (ns benchmark.remote
-  (:use [plasma util url graph connection peer viz]
+  (:use [plasma util graph viz]
+        [plasma.net url connection peer]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 ; Shows the combination of data from local and remote piers when project
 ; on both local and remote nodes.

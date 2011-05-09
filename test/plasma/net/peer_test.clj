@@ -1,12 +1,13 @@
-(ns plasma.peer-test
-  (:use [plasma url config util graph connection peer]
+(ns plasma.net.peer-test
+  (:use [plasma config util graph api]
+        [plasma.net url connection peer]
         test-utils
         clojure.contrib.generic.math-functions
         clojure.test
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
-            [plasma.query :as q]
+            [plasma.query.core :as q]
             [jiraph.graph :as jiraph]))
 
 (deftest get-node-test
@@ -234,8 +235,8 @@
             (assoc-node n-id :val i))
           (dotimes [i 10]
             (make-edge n-id (make-node) {:label :test :val i})))
-        (let [r1 (lamina/channel-seq n-chan 200)
-              r2 (lamina/channel-seq e-chan 200)]
+        (let [r1 (lamina/channel-seq n-chan 300)
+              r2 (lamina/channel-seq e-chan 300)]
           (is (= 10 (count r1) (count r2)))
           (is (= (range 10)
                  (map (comp :val :props) r1)))

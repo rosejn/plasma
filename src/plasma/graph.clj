@@ -1,6 +1,7 @@
 (ns plasma.graph
   (:use
-    [plasma util config url]
+    [plasma util config]
+    [plasma.net url]
     [plasma.jiraph mem-layer]
     [clojure.contrib.core :only (dissoc-in)])
   (:require

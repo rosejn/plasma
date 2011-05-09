@@ -1,5 +1,6 @@
 (ns plasma.viz
-  (:use [plasma util graph operator]
+  (:use [plasma util graph]
+        [plasma.query operator]
         jiraph.graph
         [clojure.contrib shell-out])
   (:require [logjam.core :as log]

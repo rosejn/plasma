@@ -1,4 +1,4 @@
-(ns plasma.url
+(ns plasma.net.url
   (:use [plasma config]))
 
 (defn url

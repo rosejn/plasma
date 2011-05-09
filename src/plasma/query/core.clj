@@ -1,6 +1,7 @@
-(ns plasma.query
-  (:use [plasma util graph operator url viz]
-        [plasma.query helpers expression]
+(ns plasma.query.core
+  (:use [plasma util graph viz]
+        [plasma.net url]
+        [plasma.query operator helpers expression]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -437,7 +438,7 @@
         deps-ops (map ops deps)
         _ (log/format :op-node "type: %s\nid: %s\ndeps: %s\nargs: %s " type id deps args)
         op-name (symbol (str (name type) "-op"))
-        op-fn (ns-resolve 'plasma.operator op-name)]
+        op-fn (ns-resolve 'plasma.query.operator op-name)]
     (case type
       :traverse
       (apply op-fn id plan recv-chan args)

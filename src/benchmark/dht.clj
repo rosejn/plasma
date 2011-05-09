@@ -1,9 +1,10 @@
 (ns benchmark.dht
-  (:use [plasma util graph url connection peer bootstrap route]
+  (:use [plasma util graph]
+        [plasma.net url connection peer bootstrap route]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 (defn add-kademlia-route-table
   [p n-bits]

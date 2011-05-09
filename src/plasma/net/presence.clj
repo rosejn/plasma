@@ -1,4 +1,4 @@
-(ns plasma.presence
+(ns plasma.net.presence
   (:import [java.net InetAddress])
   (:use [lamina core]
         [aleph udp]

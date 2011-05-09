@@ -12,6 +12,15 @@
 
 -----------
 
+* represent queries as a map containing:
+ - paths
+ - selections
+ - expressions
+ - property-loads (to load as we traverse)
+ - 
+ - projection
+-----------
+
 * recursive queries
 * create a recur-query that will smartly be both local and remote
 depending on whether it gets a proxy node as a result

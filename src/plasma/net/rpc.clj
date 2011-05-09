@@ -1,4 +1,4 @@
-(ns plasma.rpc
+(ns plasma.net.rpc
   (:use [plasma util])
   (:require [logjam.core :as log]))
 

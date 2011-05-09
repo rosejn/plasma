@@ -1,5 +1,7 @@
-(ns plasma.query-test
-  (:use [plasma util graph operator query url]
+(ns plasma.query.core-test
+  (:use [plasma util graph]
+        [plasma.net url]
+        [plasma.query core operator]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core

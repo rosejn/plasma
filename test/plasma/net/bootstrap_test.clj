@@ -1,11 +1,12 @@
-(ns plasma.bootstrap-test
-  (:use [plasma graph util url connection peer bootstrap]
+(ns plasma.net.bootstrap-test
+  (:use [plasma graph util api]
+        [plasma.net peer url connection bootstrap]
         test-utils
         clojure.test
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 ;(log/file [:peer :bootstrap :con] "peer.log")
 

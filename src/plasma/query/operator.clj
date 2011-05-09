@@ -1,4 +1,4 @@
-(ns plasma.operator
+(ns plasma.query.operator
   (:use [plasma graph util]
         [plasma.query expression helpers]
         clojure.contrib.generic.math-functions

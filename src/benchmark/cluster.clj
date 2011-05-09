@@ -1,9 +1,10 @@
 (ns benchmark.cluster
-  (:use [plasma util graph url connection peer bootstrap route viz]
+  (:use [plasma util graph viz]
+        [plasma.net url connection peer bootstrap route]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query :as q]))
+            [plasma.query.core :as q]))
 
 (defn cluster-ids
   [n-clusters size]

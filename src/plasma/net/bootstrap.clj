@@ -1,6 +1,7 @@
-(ns plasma.bootstrap
-  (:use [plasma graph connection peer util config network])
-  (:require [plasma.query :as q]
+(ns plasma.net.bootstrap
+  (:use [plasma graph util config api]
+        [plasma.net connection peer address])
+  (:require [plasma.query.core :as q]
             [lamina.core :as lamina]
             [logjam.core :as log]))
 
