@@ -66,3 +66,8 @@
               (log/to :flow "channel-timeout closing...")
               (lamina/close ch))))
 
+(defn await-promise
+  "Read a promise waiting for timeout ms for the promise to be delivered.
+  Raises an exception if a timeout occurs"
+  ([prom timeout]
+     (.get (future @prom) timeout TimeUnit/MILLISECONDS)))

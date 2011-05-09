@@ -1,5 +1,7 @@
 (ns plasma.operator
   (:use [plasma graph util]
+        [plasma.query expression helpers]
+        clojure.contrib.generic.math-functions
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
@@ -44,12 +46,6 @@
    :id (uuid)
    :deps (vec deps)
    :args (vec args)})
-
-(defn append-root-op
-  [{ops :ops :as plan} {id :id :as op}]
-  (assoc plan
-         :root id
-         :ops (assoc ops id op)))
 
 (defn operator-deps-zip [plan start-id end-id]
   (let [ops (:ops plan)]
@@ -383,7 +379,7 @@
                       node    (get pt node-id)
                       {:keys [property operator value]} predicate
                       pval (get node property)
-                      op (ns-resolve *ns* operator)
+                      op (resolve operator)
                       result (op pval value)]
                   (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s"
                               operator property value
@@ -428,6 +424,48 @@
    :pt-key pt-key
    :props props
    :out out}))
+
+(defn expression-op
+  "Executes an expression (function call) on bound query variables."
+  [id left op args]
+  (let [left-out (:out left)
+        out (map* (fn [pt]
+                    (let [args (map #(or (get pt %) %) args)
+                          op-fn (resolve op)
+                          result (apply op args)]
+                      (assoc pt id result)))
+                  left-out)]
+  {:type :expression
+   :id id
+   :left left
+   :op op
+   :args args
+   :out out}))
+
+(defn filter-op
+  "Filter based on a computed boolean expression."
+  [id left pvars expr]
+  (log/format :op "[filter-op] expr: %s\nwith pvars: %s" expr pvars)
+  (let [expr-form (read-string expr)
+        _ (log/to :op "[filter-op] expr-form: " expr-form)
+        left-out (:out left)
+        out (filter* (fn [pt]
+                       (let [bind-vars
+                             (map (fn [{:keys [name bind-key property]}]
+                                    (let [node-id (get pt bind-key)
+                                          pval (get-in pt [node-id property])]
+                                      [name pval]))
+                                  pvars)]
+                         (eval-with-vars bind-vars expr-form)))
+                     left-out)]
+    (on-closed left-out #(close out))
+    (flow-log "filter" id out)
+    {:type :filter
+     :id id
+     :left left
+     :pvars pvars
+     :expr expr
+     :out out}))
 
 (defn project-op
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node

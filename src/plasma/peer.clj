@@ -362,7 +362,7 @@
          p (promise)]
      (lamina/on-closed rchan
        (fn [] (deliver p (lamina/channel-seq rchan))))
-     @p)))
+     (await-promise p (+ timeout q/PROMISE-WAIT-TIME)))))
 
 (defn peer-recur-query
   [con q])

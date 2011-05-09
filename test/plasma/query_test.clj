@@ -3,6 +3,7 @@
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
+        clojure.contrib.generic.math-functions
         test-utils)
   (:require [logjam.core :as log]))
 
@@ -33,31 +34,31 @@
      (/ (double (- (. System (nanoTime)) start#)) 1000000.0)))
 
 (deftest where-query-test
-  (let [q (path [s [:music :synths :synth]]
-                (where (> (:score s) 0.3)))
-        q2 (project q [s :label])]
+  (let [q (-> (path [s [:music :synths :synth]])
+            (where (> (* 100 (:score 's)) (/ (inc 299) (sqrt 100)))))
+        q2 (project q ['s :label])]
     (is (every? uuid? (map :id (query q))))
     (is (= #{:kick :bass :snare}
            (set (map :label (query q2))))))
   (let [p (-> (path [sesh [:sessions :session]
-                     synth [sesh :synth]]
-                (where (= (:label synth) :kick)))
-            (project [sesh :label]))]
+                     synth [sesh :synth]])
+            (where (= (:label 'synth) :kick))
+            (project ['sesh :label]))]
     (is (= #{:red-pill :take-six}
            (set (map :label (query p)))))))
 
 (deftest auto-project-test
-  (let [p (path [sesh [:sessions :session]
-                 synth [sesh :synth]]
-                (where (= (:label synth) :kick)))]
+  (let [p (-> (path [sesh [:sessions :session]
+                     synth [sesh :synth]])
+            (where (= (:label 'synth) :kick)))]
     (is (false? (has-projection? p)))
-    (is (true? (has-projection? (project p [sesh :label]))))))
+    (is (true? (has-projection? (project p ['sesh :label]))))))
 
 (deftest project-test
   (let [q (-> (path [synth [:music :synths :synth]])
-            (project [synth :label]))
+            (project ['synth :label]))
         q2 (-> (path [synth [:music :synths :synth]])
-             (project synth))]
+             (project 'synth))]
     (is (= #{:kick :bass :snare :hat}
            (set (map :label (query q)))))
     (is (= #{:kick :bass :snare :hat}
@@ -70,7 +71,7 @@
 
 (deftest average-test
   (let [q (-> (path [synth [:music :synths :synth]])
-            (avg synth :score))]
+            (avg 'synth :score))]
     (is (= (average [0.8 0.3 0.4 0.6]) (first (query q))))))
 
 (deftest limit-test
@@ -85,11 +86,11 @@
 
 (deftest order-by-test
   (let [q1 (-> (path [synth [:music :synths :synth]])
-             (order-by synth :score)
-             (project [synth :label :score]))
+             (order-by 'synth :score)
+             (project ['synth :label :score]))
         q2 (-> (path [synth [:music :synths :synth]])
-             (order-by synth :score :desc)
-             (project [synth :label :score]))
+             (order-by 'synth :score :desc)
+             (project ['synth :label :score]))
         r1 (query q1)
         r2 (query q2)]
     (is (= 4 (count r1) (count r2)))
@@ -97,9 +98,9 @@
 
 (deftest optimizer-test
   (let [plan (-> (path [sesh [:sessions :session]
-                        synth [sesh :synth]]
-                   (where (= (:label synth) :kick)))
-               (project [sesh :label]))
+                        synth [sesh :synth]])
+               (where (= (:label 'synth) :kick))
+               (project ['sesh :label]))
         tree (query-tree plan TIMEOUT)
         optimized (optimize-plan plan)
         opt-tree (query-tree optimized TIMEOUT)]

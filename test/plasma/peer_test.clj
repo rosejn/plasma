@@ -1,21 +1,13 @@
 (ns plasma.peer-test
   (:use [plasma url config util graph connection peer]
         test-utils
+        clojure.contrib.generic.math-functions
         clojure.test
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
             [plasma.query :as q]
             [jiraph.graph :as jiraph]))
-
-;(log/file :peer "peer.log")
-;(log/repl :peer)
-
-(defmacro r
-  [timeout & body]
-  `(let [f# (future ~@body)]
-       (.get f# ~timeout (java.util.concurrent.TimeUnit/MILLISECONDS))))
-
 
 (deftest get-node-test
   (let [p (peer {:path "db/p1" :port 1234})]
@@ -39,10 +31,11 @@
   (let [port (+ 10000 (rand-int 10000))
         p (peer {:path "db/p1" :port port})
         con (get-connection (connection-manager) (plasma-url "localhost" port))
-        q (q/path [:music :synths :synth])]
+        q (-> (q/path [s [:music :synths :synth]])
+            (q/where (> (* 100 (:score 's)) (sqrt 2500))))]
     (try
       (reset-peer p)
-      (is (= 4 (count (query con q {} 200))))
+      (is (= 2 (count (query con q {} 200))))
       (finally
         (close con)
         (close p)))))
@@ -63,9 +56,9 @@
 
       (let [con (get-connection manager (plasma-url "localhost" port))]
         (is (uuid? (:id (wait-for (get-node con ROOT-ID) 200))))
-        (let [q (q/path [s [:music :synths :synth]]
-                  (where (>= (:score s) 0.6)))
-              qp (-> q (q/project s))
+        (let [q (-> (q/path [s [:music :synths :synth]])
+                  (q/where (>= (:score 's) 0.6)))
+              qp (-> q (q/project 's))
               lres (query local q)
               res  (query con q {} 200)
               lchan (lamina/channel-seq (query-channel local qp) 200)
@@ -78,7 +71,6 @@
                                                       res)))))))
       (finally
         (close local)))))
-
 
 (deftest proxy-node-test []
   (dosync (alter config* assoc
@@ -104,7 +96,7 @@
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
         (let [q (-> (q/path [synth [:net :peer :music :synths :synth]])
-                  (q/project [synth :label]))
+                  (q/project ['synth :label]))
               res (query local q)]
           (is (= #{:kick :bass :snare :hat} (set (map :label res))))))
       (finally
@@ -149,9 +141,9 @@
             (make-edge net
                   (make-proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
                   :peer))))
-        (let [q (-> (q/path [doc [:net :peer :docs :doc]]
-                      (where (> (:score doc) 0.5)))
-                  (q/project [doc :label :score]))
+        (let [q (-> (q/path [doc [:net :peer :docs :doc]])
+                  (q/where (> (:score 'doc) 0.5))
+                  (q/project ['doc :label :score]))
               res (query local q)]
           (is (= n-peers (count res))))
       (finally
@@ -183,7 +175,7 @@
                        (log/to :peer "root-id: " root-id)
                        (node-chain root-id 10 :foo)))
             res-chan (iter-n-query local 10 (-> (q/path [f [:foo]])
-                                              (q/project f)))]
+                                              (q/project 'f)))]
           (is (= end-id
                  (:id (first (lamina/channel-seq res-chan 200))))))
       (finally

@@ -1,62 +1,17 @@
 (ns plasma.query
   (:use [plasma util graph operator url viz]
+        [plasma.query helpers expression]
         [jiraph graph]
         [lamina core])
   (:require [clojure (zip :as zip)]
             [clojure (set :as set)]
-            [logjam.core :as log]))
+            [logjam.core :as log])
+  (:import [java.util.concurrent TimeUnit TimeoutException]))
+
 
 ;(log/channel :query :debug)
 (log/channel :optimize :query)
 (log/channel :build :query)
-
-(defn where-form [body]
-  (let [where? #(and (list? %) (= 'where (first %)))
-        where (first (filter where? body))]
-    where))
-
-(defn- basic-pred
-  [form]
-  (let [[op a b] form
-        [bind-symbol property value] (if (list? a)
-                                       [(second a) (first a) b]
-                                       [(second b) (first b) a])]
-    {:binding bind-symbol
-     :operator op
-     :property property
-     :value value}))
-
-(def PREDICATE-OPS #{'= '== 'not= '< '> '>= '<= })
-
-(defn- where-predicate
-  "Converts a query where predicate form into a predicate object."
-  [form]
-  (let [op (first form)]
-    (cond
-      (PREDICATE-OPS op) (basic-pred form)
-      :default (throw (Exception. (str "Unknown operator in where clause: " op))))))
-
-(defn- where->predicates
-  "Converts a where form in a path query to a set of predicate maps.
-
-   Where forms are structured like so:
-    (where (op val (:property bind-name)))
-
-  For example, query for the tracks with a score greater than 0.8:
-    (path [track [:music :tracks]]
-      (where (> (:score track) 0.8)))
-
-  "
-  [plan form]
-  (let [pred-list (map where-predicate (next form))
-        predicates (reduce (fn [pred-map pred]
-                             (assoc pred-map
-                                    (:binding pred)
-                                    (conj (get pred-map (:binding pred))
-                                          (dissoc pred :binding))))
-                           {}
-                           pred-list)]
-    (assoc plan :filters predicates)))
 
 (defn- path-start-src
   "Determines the starting operator for a single path component,
@@ -171,7 +126,7 @@
       plan
       flat-preds)))
 
-(defn- load-props
+(defn load-props
   "Add a property loading operator to the query plan to add property
   values to the run-time path-map for downstream operators to utilize.
   This is how, for example, select operators can access property values."
@@ -182,14 +137,60 @@
                          :args [bind-op properties])]
     (append-root-op plan prop-op)))
 
-(defn project*
-  [plan args]
-  (when-not (every? #(or (symbol? %)
-                         (and (vector? %)
-                              (symbol? (first %))))
-                    args)
+(defn where*
+  [plan pvars expr]
+  (let [var-props (reduce
+                    (fn [prop-map pvar]
+                      (update-in prop-map [(symbol (:pvar pvar))]
+                                 conj (:property pvar)))
+                    {} pvars)
+        plan (reduce #(load-props %1 %2 (get var-props %2))
+                     plan
+                     (keys var-props))
+        pvars (vec (map #(assoc % :bind-key (get (:pbind plan)
+                                                 (symbol (:pvar %))))
+                        pvars))]
+    (append-root-op plan {:type :filter
+                          :id (uuid)
+                          :deps [(:root plan)]
+                          :args [pvars (str expr)]})))
+
+(defmacro where
+  [plan expr]
+  (let [expr (rebind-expr-ops expr)]
+    `(binding [*pvars* (atom [])]
+       (let [evaled-expr# ~expr]
+         (where* ~plan @*pvars* evaled-expr#)))))
+
+(defn expr*
+  [plan pvars expr-form])
+
+(defmacro expr
+  [plan form]
+  (let [expr (rebind-expr-ops expr)]
+    `(binding [*pvars* (atom [])]
+       (let [evaled-expr# ~expr]
+         (expr* ~plan @*pvars* evaled-expr#)))))
+
+(defn project
+  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
+
+  (let [q (path [person [:app :social :friends]])]
+    ...
+
+    ; get the UUIDs of person nodes
+    (project q person)
+
+    ; get the given set of props for each person node
+    (project [person :name :email :age]))
+  "
+  [plan & args]
+  (if-let [arg (some #(not (or (symbol? %)
+                               (and (vector? %)
+                                    (symbol? (first %)))))
+                     args)]
     (throw (Exception.
-             (format "Trying to project with invalid arguments.  Project requires either a path binding variable (symbol) or a vector containing a binding var and one or more keyword properties to project on.  (e.g. (project person [article :author :title]))"))))
+             (format "Trying to project with invalid arguments.  Project requires either a path binding variable (symbol) or a vector containing a binding var and one or more keyword properties to project on.  (e.g. (project person ['article :author :title]))  Instead got: %s with bad arg: %s of type: %s" args arg (type arg)))))
   (let [projections (map #(if (symbol? %) [%] %) args)
         _ (log/to :query "[project] projections:" (seq projections))
         plan (reduce
@@ -212,21 +213,6 @@
                          :args [projections])]
     (append-root-op plan proj-op)))
 
-(defmacro project
-  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
-
-  (let [q (path [person [:app :social :friends]])]
-    ...
-
-    ; get the UUIDs of person nodes
-    (project q person)
-
-    ; get the given set of props for each person node
-    (project [person :name :email :age]))
-  "
-  [plan & args]
-  `(plasma.query/project* ~plan (quote ~args)))
-
 (defn count*
   [{root :root :as plan}]
   (append-root-op plan
@@ -235,7 +221,8 @@
                                   :args [])
                          :numerical? true)))
 
-(defn avg*
+(defn avg
+  "Take the average of a set of property values bound to a path expression variable."
   [{:keys [root ops pbind] :as plan} avg-var avg-prop]
   (let [avg-key (get pbind avg-var)
         p-op (plan-op :property
@@ -250,11 +237,6 @@
            :ops (assoc ops
                        (:id p-op) p-op
                        (:id avg-op) avg-op))))
-
-(defmacro avg
-  "Take the average of a set of property values bound to a path expression variable."
-  ([plan avg-var avg-prop]
-   `(plasma.query/avg* ~plan '~avg-var ~avg-prop)))
 
 (defn choose
   [{root :root :as plan} n]
@@ -301,9 +283,9 @@
               }]
     (-> plan
       (traversal-tree paths)
-      (where->predicates (where-form body))
+      ;(where->predicates (where-form body))
       (plan-receiver)
-      (selection-ops)
+      ;(selection-ops)
       (parameterized))))
 
 (defn- eval-path-binding
@@ -352,29 +334,26 @@
   (and (associative? q)
        (= :query (:type q))))
 
-(defn order-by*
-  [plan sort-var sort-prop order]
-  (let [{:keys [root ops]} plan
-        sort-key (get (:pbind plan) sort-var)
-        p-op (plan-op :property
-                      :deps [(:root plan)]
-                      :args [sort-key [sort-prop]])
-        s-op (plan-op :sort
-                      :deps [(:id p-op)]
-                      :args [sort-key sort-prop order])
-        ops (assoc ops
-                   (:id p-op) p-op
-                   (:id s-op) s-op)]
-    (assoc plan
-           :root (:id s-op)
-           :ops ops)))
-
-(defmacro order-by
+(defn order-by
   "Sort the results by a specific property value of one of the nodes
   traversed in a path expression."
-  ([plan sort-var sort-prop & [order]]
-   (let [order (or order :asc)]
-     `(plasma.query/order-by* ~plan '~sort-var ~sort-prop ~order))))
+  ([plan sort-var sort-prop]
+   (order-by plan sort-var sort-prop :asc))
+  ([plan sort-var sort-prop order]
+   (let [{:keys [root ops]} plan
+         sort-key (get (:pbind plan) sort-var)
+         p-op (plan-op :property
+                       :deps [(:root plan)]
+                       :args [sort-key [sort-prop]])
+         s-op (plan-op :sort
+                       :deps [(:id p-op)]
+                       :args [sort-key sort-prop order])
+         ops (assoc ops
+                    (:id p-op) p-op
+                    (:id s-op) s-op)]
+     (assoc plan
+            :root (:id s-op)
+            :ops ops))))
 
 (defn downstream-op-node
   "Find the downstream operator node for the given operator node in the plan."
@@ -522,7 +501,8 @@
    :id (:id plan)
    :ops (build-query plan timeout)
    :root (:root plan)
-   :params (:params plan)})
+   :params (:params plan)
+   :timeout timeout})
 
 (defn has-projection?
   "Check whether a query plan contains a project operator."
@@ -547,7 +527,7 @@
     (let [bind-sym (if (= 1 (count (:pbind plan)))
                      (ffirst (:pbind plan))
                      (first (last (:paths plan))))]
-            (project* plan [bind-sym]))))
+            (project plan [bind-sym]))))
 
 ; Query execution is initiated by loading parameters into param-op
 ; operator nodes.
@@ -571,7 +551,13 @@
                       param-val
                       [param-val])
           param-op (get-in tree [:ops param-id])]
-        (apply enqueue-and-close (get param-op :in) param-val))))
+        (apply enqueue-and-close (get param-op :in) param-val)))
+  (schedule (:timeout tree)
+    (fn []
+      (doseq [op (:ops tree)]
+        (try
+          (close (:out op))
+          (catch Exception e))))))
 
 (defn query-results
   [tree & [timeout]]
@@ -580,6 +566,7 @@
     (lazy-channel-seq chan timeout)))
 
 (def MAX-QUERY-TIME (* 3 1000)) ; in ms
+(def PROMISE-WAIT-TIME 100)
 
 (defn query-channel
   "Issue a query to the currently bound graph, and return a channel
@@ -608,7 +595,7 @@
          p (promise)]
      (on-closed res-chan
        (fn [] (deliver p (channel-seq res-chan))))
-     @p)))
+     (await-promise p (+ timeout PROMISE-WAIT-TIME)))))
 
 (defn- with-send-channel
   "Append channel to the end of each send operator's args list."

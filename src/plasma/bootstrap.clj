@@ -17,7 +17,7 @@
   [p]
   (with-peer-graph p
     (q/query (-> (q/path [peer [:net :peer]])
-               (q/project [peer :url])))))
+               (q/project ['peer :url])))))
 
 (defn- have-peer?
   [p url]
@@ -68,7 +68,7 @@
   ([p boot-url n n-retries]
    (let [con (peer-connection p boot-url)
          new-peers (query con (-> (q/path [peer [:net :peer]])
-                                (q/project [peer :proxy :id])
+                                (q/project ['peer :proxy :id])
                                 (q/choose N-BOOTSTRAP-PEERS)))]
      (log/to :bootstrap "n: " n "\n"
              "n-retries: " n-retries "\n"
