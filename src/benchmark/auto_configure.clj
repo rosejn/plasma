@@ -5,11 +5,11 @@
 
 (config :presence true)
 
-(def peer (peer))
+(def p (peer))
 
 (Thread/sleep 12000)
 
-(let [ps (get-peers peer)]
+(let [ps (get-peers p)]
   (println "Got" (count ps) "peers\n\n" ps))
 
 (System/exit)
