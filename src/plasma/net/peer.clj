@@ -1,6 +1,6 @@
 (ns plasma.net.peer
   (:use [plasma config util graph api]
-        [plasma.net connection address presence rpc]
+        [plasma.net url connection address presence rpc]
         clojure.stacktrace)
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
@@ -177,7 +177,7 @@
 (defn get-peers
   [p]
   (query p (-> (q/path [peer [:net :peer]])
-             (q/project [peer :id :proxy]))))
+             (q/project ['peer :id :proxy]))))
 
 (defn- setup-peer-presence
   [p]
