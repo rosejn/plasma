@@ -161,12 +161,34 @@
       (clear-connections manager))
     (reset! status :closed)))
 
-; TODO: FIX ME.  register-connection needs a channel and a url
-(defn- setup-presence-listener
+(defn- net-root
   [p]
-  (lamina/receive-all (presence-listener)
-    (fn [{:keys [peer-id peer-port peer-host]}]
-      (register-connection (:manager p) peer-host peer-port))))
+  (with-peer-graph p
+    (:id (first (q/query (q/path [:net]))))))
+
+(defn add-peer
+  [p id url]
+  (log/to :peer "[add-peer] adding:" url)
+  (with-peer-graph p
+    (let [prx (make-proxy-node id url)
+          net (net-root p)]
+      (make-edge net prx :peer))))
+
+(defn get-peers
+  [p]
+  (query p (-> (q/path [peer [:net :peer]])
+             (q/project [peer :id :proxy]))))
+
+(defn- setup-peer-presence
+  [p]
+  (let [h (local-addr)
+        p (:port p)
+        pchan (lamina/filter* #(not (and (= h (:host %)) (= p (:port %))))
+                             (presence-channel))]
+    (lamina/receive-all pchan
+      (fn [{:keys [id host port]}]
+        (add-peer p id (plasma-url host port))))
+    (presence-broadcaster (peer-id p) h p (config :presence-period))))
 
 (defmulti rpc-handler
   "A general purpose rpc multimethod."
@@ -279,8 +301,9 @@
          url (public-url port)
          p (PlasmaPeer. manager g url port listener status options)]
      (on-connect p (partial handle-peer-connection p))
+
      (when (:presence options)
-       (setup-presence-listener p))
+       (setup-peer-presence p))
      p)))
 
 (defn peer-connection

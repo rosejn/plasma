@@ -12,7 +12,7 @@
   ([] (presence-channel (config :presence-port)))
   ([port]
    (if-let [chan (get @listeners* port)]
-     (fork chan)
+     chan
      (let [msg-chan @(udp-object-socket {:port port})
            p-chan (filter* (fn [msg]
                              (and (associative? msg)

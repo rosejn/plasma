@@ -24,19 +24,6 @@
   [p url]
   (contains? (set (peer-urls p)) url))
 
-(defn- net-root
-  [p]
-  (with-peer-graph p
-    (:id (first (q/query (q/path [:net]))))))
-
-(defn add-peer
-  [p id url]
-  (log/to :bootstrap "add-peer: " url)
-  (with-peer-graph p
-    (let [prx (make-proxy-node id url)
-          net (net-root p)]
-      (make-edge net prx :peer))))
-
 (defn- advertise-handler
   [p con event]
   (let [[root-id url] (:params event)]
