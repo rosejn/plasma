@@ -177,7 +177,7 @@
 (defn get-peers
   [p]
   (query p (-> (q/path [peer [:net :peer]])
-             (q/project [peer :id :proxy]))))
+             (q/project ['peer :id :proxy]))))
 
 (defn- setup-peer-presence
   [p]
