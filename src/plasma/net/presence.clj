@@ -17,7 +17,7 @@
            p-chan (filter* (fn [msg]
                              (and (associative? msg)
                                   (= :presence (:type msg))))
-                           msg-chan)]
+                           (map* :message msg-chan))]
        (dosync (alter listeners* assoc port p-chan))
        p-chan))))
 
