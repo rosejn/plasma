@@ -283,7 +283,7 @@
 (defn setup-peer-graph
   [p]
   (with-peer-graph p
-    (if (empty? (query (q/path [:net])))
+    (if (empty? (q/query (q/path [:net])))
       (make-edge ROOT-ID (make-node) :net))))
 
 (defn peer
