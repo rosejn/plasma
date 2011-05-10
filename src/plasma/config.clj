@@ -17,6 +17,6 @@
 (defn config
   "Lookup a config value."
   ([] @config*)
-  ([key] (get @config* key))
-  ([k v] (dosync (alter config* k v))))
+  ([k] (get @config* k))
+  ([k v] (dosync (alter config* assoc k v))))
 
