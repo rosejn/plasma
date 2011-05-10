@@ -139,29 +139,29 @@
     (append-root-op plan prop-op)))
 
 (defn where*
-  [plan pvars expr]
+  [plan expr-vars expr]
   (let [var-props (reduce
-                    (fn [prop-map pvar]
-                      (update-in prop-map [(symbol (:pvar pvar))]
-                                 conj (:property pvar)))
-                    {} pvars)
+                    (fn [prop-map exv]
+                      (update-in prop-map [(symbol (:pvar exv))]
+                                 conj (:property exv)))
+                    {} expr-vars)
         plan (reduce #(load-props %1 %2 (get var-props %2))
                      plan
                      (keys var-props))
-        pvars (vec (map #(assoc % :bind-key (get (:pbind plan)
+        expr-vars (vec (map #(assoc % :bind-key (get (:pbind plan)
                                                  (symbol (:pvar %))))
-                        pvars))]
+                        expr-vars))]
     (append-root-op plan {:type :filter
                           :id (uuid)
                           :deps [(:root plan)]
-                          :args [pvars (str expr)]})))
+                          :args [expr-vars (str expr)]})))
 
 (defmacro where
   [plan expr]
   (let [expr (rebind-expr-ops expr)]
-    `(binding [*pvars* (atom [])]
+    `(binding [*expr-vars* (atom [])]
        (let [evaled-expr# ~expr]
-         (where* ~plan @*pvars* evaled-expr#)))))
+         (where* ~plan @*expr-vars* evaled-expr#)))))
 
 (defn expr*
   [plan pvars expr-form])

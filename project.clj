@@ -8,7 +8,9 @@
                  [vijual "0.1.0-SNAPSHOT"]
                  [logjam "0.1.0-SNAPSHOT"]
                  [ring/ring-core "0.3.1"]
-                 [org.bitlet/weupnp "0.1.2-SNAPSHOT"]])
+                 [org.bitlet/weupnp "0.1.2-SNAPSHOT"]]
+  :dev-dependencies [[marginalia "0.5.1-SNAPSHOT"]]
+  :tasks [marginalia.tasks])
 
 (import '[java.io File])
 (use '[clojure.java.io :only (delete-file)])

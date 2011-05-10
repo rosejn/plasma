@@ -1,6 +1,4 @@
-* pull where form out into separate macro
 * make-node and make-edge query forms to not be doing with-peer-graph
-* and / or / not in predicates
 
 * create a link query type to connect one or more nodes
 
@@ -12,12 +10,14 @@
 
 -----------
 
-* represent queries as a map containing:
+* represent queries using a query specification, rather than the query plan
+operator tree
+
+* query spec map:
  - paths
  - selections
  - expressions
  - property-loads (to load as we traverse)
- - 
  - projection
 -----------
 
@@ -62,7 +62,11 @@ networks
 
 ----------------------------------------------------------
 
-== Moving to defrecord style:
+Move to records and a standard protocol for query.operators:
+
+* Goal: standardize the interface and access to important operator info
+  - dataflow dependencies for optimizing query plan
+  - specific arguments by name for re-organizing operators, combining operators
 
 methods:
 * branch?
@@ -70,26 +74,14 @@ methods:
 * plan version
 * instance version
 
-----------------------------------------------------------
-
-* subscribe to a (local or remote) node 
- - return a channel to receive update events
- - send uuid to peer, which goes into a subscription map
- - node update functions send event to subscribers after updates
-
-Operators:
-
-* and/or logical operators for predicates
- - AND is just appending more selection operators
- - OR we need to short-circuit on true and forward OA past
-   next selection ops, else go to next selection operator
+-------------------------------
 
 * insert node/edge
 * update node/edge
 * delete node/edge
 
-* Add regular expression edge predicates for traverse operator
-
+-------------------------------
+Long Term:
 -------------------------------
 
-* add versioning by saving previous versions with a new uuid and a link
+* look into jiraph versioning mechanism

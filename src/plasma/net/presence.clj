@@ -1,41 +1,43 @@
 (ns plasma.net.presence
-  (:import [java.net InetAddress])
-  (:use [lamina core]
-        [aleph udp]
-        [plasma config]))
+  (:use [plasma config util]
+        [plasma.net address]
+        [lamina core]
+        [aleph udp]))
 
-(def broadcasting? (atom false))
-(def broadcaster*  (agent nil))
+(def listeners* (ref {}))
 
-(defn presence-listener
-  "Returns a channel that will receive all presence messages."
-  []
-  (let [msg-chan @(udp-object-socket {:port (config :presence-port)})]
-    (filter* (fn [msg]
-               (and (associative? msg)
-                    (= :presence (:type msg))))
-             msg-chan)))
+(defn presence-channel
+  "Returns a channel that will receive all presence messages broadcast
+  on the local network."
+  ([] (presence-channel (config :presence-port)))
+  ([port]
+   (if-let [chan (get @listeners* port)]
+     (fork chan)
+     (let [msg-chan @(udp-object-socket {:port port})
+           p-chan (filter* (fn [msg]
+                             (and (associative? msg)
+                                  (= :presence (:type msg))))
+                           msg-chan)]
+       (dosync (alter listeners* assoc port p-chan))
+       p-chan))))
 
 (defn- presence-message
   "Create a presence message."
-  []
-  (let [{:keys [presence-ip presence-port plasma-version
-                peer-id peer-port]} (config)
+  [id host port]
+  (let [presence-ip (broadcast-addr)
+        {:keys [presence-port plasma-version]} (config)
         msg {:type :presence
              :plasma-version plasma-version
-             :peer-id peer-id
-             :peer-port peer-port
-             :peer-host (.getHostName (InetAddress/getLocalHost))}]
-    {:msg msg :host presence-ip :port presence-port}))
+             :id id
+             :host host
+             :port port}]
+    {:message msg :host presence-ip :port presence-port}))
 
-(defn broadcast-presence
-  "Start periodically broadcasting a presence message."
-  []
-  (send broadcaster* (fn [_] @(udp-object-socket)))
-  (reset! broadcasting? true)
-  (let [send-fn (fn sender [msg-chan]
-                 (enqueue msg-chan (presence-message))
-                 (Thread/sleep (config :presence-period))
-                 (send-off broadcaster* sender))]
-    (send-fn)))
+(defn presence-broadcaster
+  "Start periodically broadcasting a presence message.  Returns a function
+  that will stop broadcasting when called."
+  [id host port period]
+  (let [msg (presence-message id host port)
+        broadcast-channel @(udp-object-socket {:broadcast true})]
+    (periodically period #(enqueue broadcast-channel msg))))
 

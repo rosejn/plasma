@@ -26,6 +26,14 @@
         me (first (filter #(not (= "127.0.0.1" %)) ips))]
     me))
 
+(defn local-broadcast-addr
+  []
+  (apply str (concat (re-seq #"[0-9]*\." (local-addr)) ["255"])))
+
+(defn broadcast-addr
+  []
+  "255.255.255.255")
+
 (defn addr-info
   ([] (addr-info (gateway)))
   ([g]

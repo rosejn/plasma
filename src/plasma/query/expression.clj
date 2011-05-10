@@ -15,6 +15,9 @@
        [~'v]
        (list '~fn-sym ~'v))))
 
+; TODO: Convert to implementing clojure.contrib.generic methods
+
+(def-unary-op not)
 (def-unary-op inc)
 (def-unary-op dec)
 (def-unary-op nil?)
@@ -59,6 +62,8 @@
   (list '/ a b))
 
 
+(def-binary-op and)
+(def-binary-op or)
 (def-binary-op =)
 (def-binary-op ==)
 (def-binary-op not=)
