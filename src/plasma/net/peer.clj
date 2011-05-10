@@ -280,6 +280,12 @@
   (lamina/receive-all (stream-channel con)
                       (partial stream-request-handler peer)))
 
+(defn setup-peer-graph
+  [p]
+  (with-peer-graph p
+    (if (empty? (query (q/path [:net])))
+      (make-edge ROOT-ID (make-node) :net))))
+
 (defn peer
   "Create a new peer.
 
@@ -300,6 +306,7 @@
          status (atom :running)
          url (public-url port)
          p (PlasmaPeer. manager g url port listener status options)]
+     (setup-peer-graph p)
      (on-connect p (partial handle-peer-connection p))
 
      (when (:presence options)
