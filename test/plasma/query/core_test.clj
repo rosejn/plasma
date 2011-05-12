@@ -1,5 +1,5 @@
 (ns plasma.query.core-test
-  (:use [plasma util graph]
+  (:use [plasma util graph viz]
         [plasma.net url]
         [plasma.query core operator]
         [clojure test stacktrace]
@@ -27,6 +27,15 @@
         res3 (query (path [synths :synth]))]
     (is (apply = #{:kick :bass :snare :hat}
                (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))))
+
+(deftest nested-path-test
+  (let [q1 (path [:music :synths])
+        q2 (-> (path [s [q1 :synth]])
+             (project ['s :label]))
+        res (query q2)]
+    (log/to :flow (with-out-str (print-query q2)))
+    (is (= #{:kick :bass :snare :hat}
+               (set (map :label res))))))
 
 (defmacro run-time
   "Evaluates expr and returns the time it took to execute in ms."

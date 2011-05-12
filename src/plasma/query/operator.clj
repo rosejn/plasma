@@ -235,16 +235,19 @@
         edge-pred-fn (predicate-fn edge-predicate)]
     (receive-all in
       (fn [pt]
+        (log/format :flow "[traverse - %s] pt: %s" (trim-id id) pt)
         (when pt
           (let [src-id (get pt src-key)]
             (when (visit visited src-id)
               (let [src-node (find-node src-id)]
                 (cond
                   (proxy-node? src-id)
-                  (let [proxy (:proxy src-node)
-                        res-chan (remote-sub-query plan id src-id proxy)
+                  (let [proxy-url (:proxy src-node)
+                        res-chan (remote-sub-query plan id src-id proxy-url)
                         combined-chan (map* #(merge pt %) res-chan)]
-                    (log/format :flow "[traverse] [%s] proxy: %s " (trim-id src-id) proxy)
+                    (log/format :flow "[traverse - %s] proxy-node => id: %s proxy: %s "
+                                (trim-id id)
+                                (trim-id src-id) proxy-url)
                     ; Send the remote-sub-query channel to the recv operator
                     (enqueue recv-chan combined-chan)
                     (on-closed res-chan #(close combined-chan)))
@@ -274,6 +277,8 @@
         right-in  (:in right)
         right-out (:out right)
         out				(channel)]
+    (log/format :flow "[join - %s] left: %s right: %s" (trim-id id)
+                (trim-id (:id left)) (trim-id (:id right)))
     (siphon left-out right-in)
     (siphon right-out out)
     (on-drained left-out #(close right-in))
@@ -283,6 +288,21 @@
      :id id
      :left left
      :right right
+     :out out}))
+
+(defn id-map-op
+  "Used for nested sub-queries.  Just maps PTs to their :id, which will
+  serve as the src nodes for the following query."
+  [id left]
+  (let [left-out (:out left)
+        out (map* (fn [pt] {id (:id pt)}) left-out)]
+    (log/format :flow "[id-map - %s] left: %s" (trim-id id)
+                (trim-id (:id left)))
+    (flow-log "id-map" id left-out)
+    (on-drained left-out #(close out))
+    {:type :id-map
+     :id id
+     :left left
      :out out}))
 
 (defn aggregate-op

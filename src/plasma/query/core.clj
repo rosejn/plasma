@@ -9,10 +9,14 @@
             [logjam.core :as log])
   (:import [java.util.concurrent TimeUnit TimeoutException]))
 
-
 ;(log/channel :query :debug)
 (log/channel :optimize :query)
 (log/channel :build :query)
+
+(defn query?
+  [q]
+  (and (associative? q)
+       (= :query (:type q))))
 
 (defn- path-start-src
   "Determines the starting operator for a single path component,
@@ -21,6 +25,7 @@
   (let [start (first path-seg)
         {:keys [pbind ops]} plan]
     (log/to :query "path-start-src: " start " -> " (get jbind start))
+    (log/to :query "jbind: " jbind "\npbind: " pbind)
     (cond
       ; path starting with a keyword means start at the root
       (keyword? start)
@@ -66,7 +71,9 @@
 
 (defn- traversal-path
   "Takes a traversal-plan and a single [bind-name [path ... segment]] pair and
-  adds the traversal to the plan.
+  adds the traversal to the plan.  Note, jbind is a map of identified path segment to
+  join operator at the root of that segment's traversal tree, which is where we need
+  to get values if referring to a previous path segment.
   "
   [[plan jbind] [bind-name segment]]
   (log/to :query "path: " segment)
@@ -88,15 +95,15 @@
            :root root-op-id)
      jbind]))
 
-(defn- traversal-tree
+(defn- with-traversal-tree
   "Convert a seq of [bind-name [path ... segment]] pairs into a query-plan
   representing the query operators implementing the corresponding path
   traversal.
 
   input: [(a [:foo :bar])
           (b [a :baz :zam])]"
-  [plan paths]
-  (first (reduce traversal-path [plan {}] paths)))
+  [plan jbind paths]
+  (first (reduce traversal-path [plan jbind] paths)))
 
 (defn- selection-ops
   "Add the selection operators corresponding to a set of predicates
@@ -164,14 +171,14 @@
          (where* ~plan @*expr-vars* evaled-expr#)))))
 
 (defn expr*
-  [plan pvars expr-form])
+  [plan expr-vars expr-form])
 
 (defmacro expr
   [plan form]
   (let [expr (rebind-expr-ops expr)]
-    `(binding [*pvars* (atom [])]
+    `(binding [*expr-vars* (atom [])]
        (let [evaled-expr# ~expr]
-         (expr* ~plan @*pvars* evaled-expr#)))))
+         (expr* ~plan @*expr-vars* evaled-expr#)))))
 
 (defn project
   "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
@@ -251,7 +258,39 @@
                                 :deps [root]
                                 :args [n])))
 
-(defn parameterized
+(defn has-projection?
+  "Check whether a query plan contains a project operator."
+  [plan]
+  (if (first (filter #(= :project (:type %)) (vals (:ops plan))))
+    true
+    false))
+
+(defn- root-op
+  "Returns the root operator for a query plan."
+  [p]
+  (get (:ops p) (:root p)))
+
+(defn- default-project-binding
+  "Finds the default projection binding for a query.  If the path consisted
+  of only one bound segment then it uses that one, otherwise it uses the last
+  bound segment."
+  [plan]
+  (if (= 1 (count (:pbind plan)))
+    (ffirst (:pbind plan))
+    (first (last (:paths plan)))))
+
+(defn with-result-project
+  "If an explicit projection has not been added to the query plan and the
+  root operator outputs path maps then by default we project on the final
+  element of the path query."
+  [plan]
+  (if (or (has-projection? plan)
+          (:numerical? (root-op plan)))
+    plan
+    (let [bind-sym (default-project-binding plan)]
+            (project plan [bind-sym]))))
+
+(defn with-param-map
   "Add the parameter map for a query."
   [plan]
   (let [param-ops (filter #(= :parameter (:type %)) (vals (:ops plan)))
@@ -263,7 +302,7 @@
                           param-ops)]
     (assoc plan :params param-map)))
 
-(defn- plan-receiver
+(defn- with-receive-op
   "Add a receive operator to the root of the query plan."
   [plan]
   (append-root-op plan (plan-op :receive
@@ -271,23 +310,36 @@
 
 (defn path*
   "Helper function to 'parse' a path expression and generate an initial
-  query plan."
+  query plan.  If a nested query is found as the first element of the path
+  then this path will start from the results of the nested query."
   [paths body]
-  (let [plan {:type :query
-              :id (uuid)
-              :root nil    ; root operator id
-              :params {}   ; param-name -> parameter-op
-              :ops {}      ; id         -> operator
-              :filters {}  ; binding    -> predicate
-              :pbind {}    ; symbol     -> traversal       (path binding)
-              :paths paths
-              }]
+  (let [[[p1-bind [first-segment & other-segs]] & other-paths] paths
+        [plan jbind paths]
+        (if (query? first-segment)
+          (let [plan first-segment
+                plan (with-result-project plan)
+                plan (append-root-op plan (plan-op :id-map
+                                                   :deps [(:root plan)]))
+                sub-query-bind (gensym "sub-query-")
+                plan (assoc-in plan [:pbind sub-query-bind] (:root plan))
+                paths (cons [p1-bind (cons sub-query-bind other-segs)]
+                            other-paths)
+                plan (update-in plan [:paths] concat paths)
+                jbind {sub-query-bind (:root plan)}]
+            (log/to :query "nested sub-query: " jbind)
+            [plan jbind paths])
+          [{:type :query
+            :id (uuid)
+            :root nil    ; root operator id
+            :params {}   ; param-name -> parameter-op
+            :ops {}      ; id         -> operator
+            :filters {}  ; binding    -> predicate
+            :pbind {}    ; symbol     -> traversal       (path binding)
+            :paths paths} {} paths])]
     (-> plan
-      (traversal-tree paths)
-      ;(where->predicates (where-form body))
-      (plan-receiver)
-      ;(selection-ops)
-      (parameterized))))
+      (with-traversal-tree jbind paths)
+      (with-receive-op)
+      (with-param-map))))
 
 (defn- eval-path-binding
   "Iterate through the path expression evaluating all symbols that aren't
@@ -329,11 +381,6 @@
         path-vars (set (map first paths))
         paths (eval-path-binding paths)]
     `(path* ~paths (quote ~body))))
-
-(defn query?
-  [q]
-  (and (associative? q)
-       (= :query (:type q))))
 
 (defn order-by
   "Sort the results by a specific property value of one of the nodes
@@ -504,31 +551,6 @@
    :root (:root plan)
    :params (:params plan)
    :timeout timeout})
-
-(defn has-projection?
-  "Check whether a query plan contains a project operator."
-  [plan]
-  (if (first (filter #(= :project (:type %)) (vals (:ops plan))))
-    true
-    false))
-
-(defn- root-op
-  "Returns the root operator for a query plan."
-  [p]
-  (get (:ops p) (:root p)))
-
-(defn with-result-project
-  "If an explicit projection has not been added to the query plan and the
-  root operator outputs path maps then by default we project on the final
-  element of the path query."
-  [plan]
-  (if (or (has-projection? plan)
-          (:numerical? (root-op plan)))
-    plan
-    (let [bind-sym (if (= 1 (count (:pbind plan)))
-                     (ffirst (:pbind plan))
-                     (first (last (:paths plan))))]
-            (project plan [bind-sym]))))
 
 ; Query execution is initiated by loading parameters into param-op
 ; operator nodes.
