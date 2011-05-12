@@ -8,6 +8,11 @@
 (link ROOT-ID :foo {:name "TJ Watsom"})
 (link (path [:a :b :c]) :foo {:name "TJ Watsom"})
 
+* link expression should allow src and tgt come from other queries
+ - what is default behavior in this case?
+   * connect all of src to all of tgt
+   * aggregate both inputs then perform linking
+
 -----------
 
 * represent queries using a query specification, rather than the query plan
