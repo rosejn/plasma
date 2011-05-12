@@ -6,7 +6,7 @@
         clojure.stacktrace)
   (:require [logjam.core :as log]))
 
-(def *pvars* nil)
+(def *expr-vars* nil)
 
 (defmacro def-unary-op [op-sym]
   (let [resd (str (.getName (.ns (resolve op-sym))))
@@ -186,7 +186,7 @@
              :name pname
              :pvar (str pvar)
              :property prop}]
-    (swap! *pvars* conj pvp)
+    (swap! *expr-vars* conj pvp)
     pname))
 
 (defn pvar-property

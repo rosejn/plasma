@@ -1,5 +1,6 @@
 (ns plasma.web
-  (:use [plasma graph config util connection peer]
+  (:use [plasma graph config util]
+        [plasma.net connection peer]
         [aleph formats http tcp]
         [ring.middleware file file-info]
         [clojure.contrib json]

@@ -1,5 +1,5 @@
 (ns benchmark.dht
-  (:use [plasma util graph]
+  (:use [plasma util graph api]
         [plasma.net url connection peer bootstrap route]
         [clojure test stacktrace]
         test-utils)
@@ -16,13 +16,13 @@
 (defn peer-buckets
   [p]
   (query p (-> (q/path [b [:net :bucket]])
-             (q/project [b :id :bit]))))
+             (q/project ['b :id :bit]))))
 
 (defn k-peers
   [p]
   (query p (-> (q/path [b [:net :bucket]
                         p [b :peer]])
-             (q/project [b :bit] [p :id :proxy]))))
+             (q/project ['b :bit] ['p :id :proxy]))))
 
 (defn peers-to-k-buckets
   [p n-bits]
@@ -40,8 +40,8 @@
 
 (defn bucket-n
   [p n]
-  (first (query p (-> (q/path [b [:net :bucket]]
-                              (where (= (:bit b) n)))))))
+  (first (query p (-> (q/path [b [:net :bucket]])
+                    (q/where (= (:bit 'b) n))))))
 
 (defn add-to-bucket
   [p n new-peer]

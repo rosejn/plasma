@@ -7,13 +7,6 @@
 
 (log/file :bootstrap "boot.log")
 
-(defn- setup-peer-graph
-  [p]
-  (with-peer-graph p
-    (clear-graph)
-    (let [root (root-node-id)]
-      (make-edge root (make-node) :net))))
-
 (defn- peer-urls
   [p]
   (with-peer-graph p
@@ -42,7 +35,6 @@
   ([] (bootstrap-peer {}))
   ([options]
    (let [p (peer options)]
-     (setup-peer-graph p)
      (on-connect p (partial bootstrap-connect-handler p))
      p)))
 

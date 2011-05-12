@@ -120,17 +120,18 @@
                         (clear-graph)
                         (let [root-id (root-node-id)]
                           (assoc-node root-id :peer-id n)
-                          (with-nodes! [net :net
+                          (let-nodes [net :net
                                         docs :docs
                                         a {:label (str "a-" n) :score 0.1}
                                         b {:label (str "b-" n) :score 0.5}
                                         c {:label (str "c-" n) :score 0.9}]
-                            (make-edge root-id net :net)
-                            (make-edge root-id docs :docs)
-                            (make-edge docs a :doc)
-                            (make-edge docs b :doc)
-                            (make-edge docs c :doc))
-                          [p root-id n]))))
+                            (edges!
+                              [root-id net :net
+                               root-id docs :docs
+                               docs a :doc
+                               docs b :doc
+                               docs c :doc])
+                          [p root-id n])))))
                   (range n-peers)))]
     (try
       (with-peer-graph local

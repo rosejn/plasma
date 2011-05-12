@@ -17,7 +17,7 @@
    (let [walk-fn (fn [[_ g]]
                    (let [q (->
                              (q/path [peer [:net :peer]])
-                             (q/project [peer :id :proxy])
+                             (q/project ['peer :id :proxy])
                              (q/choose 1))
                          res (first (query g q))]
                      [res (peer-connection p (:proxy res))]))]
@@ -90,7 +90,7 @@
   "
   [p n tgt-id n-bits]
   (let [peers (query p (-> (q/path [p [:net :bucket :peer]])
-                         (q/project [p :id :proxy])))]
+                         (q/project ['p :id :proxy])))]
     (take n (sort-by #(kademlia-distance tgt-id (:id %) n-bits) peers))))
 
 (def ALPHA 3)
@@ -102,15 +102,18 @@
            closest root]
       (println "[dht-lookup] cur: " (k-bucket (:id closest) tgt-id n-bits))
       (let [closest-dist (kademlia-distance tgt-id (:id closest) n-bits)
+            _ (println "dist: " closest-dist)
+            _ (println "peers: " peers)
             cps (flatten (map #(closest-peers % ALPHA tgt-id n-bits) peers))
             cps (map #(assoc % :distance
                              (kademlia-distance tgt-id (:id %) n-bits))
                      cps)
             cps (filter #(< (:distance %) closest-dist) cps)
             sorted (sort-by :distance cps)]
+        (println "sorted: " sorted)
         (if (empty? sorted)
           (assoc closest :distance (kademlia-distance (:id root) (:id closest) n-bits))
-          (recur (map #(peer-connection p (:proxy %)) sorted)
+          (recur (map (comp (partial peer-connection p) :proxy) sorted)
                  (first sorted)))))))
 
 (defn dht-join

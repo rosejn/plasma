@@ -8,7 +8,7 @@
 
 (def G (open-graph "db/test"))
 
-(defmacro with-nodes! [bindings & body]
+(defmacro let-nodes [bindings & body]
   (let [nodes (map (fn [[node-sym props]]
                      (let [props (if (keyword? props)
                                    {:label props}
@@ -18,39 +18,50 @@
         nodes (vec (apply concat nodes))]
     `(let ~nodes ~@body)))
 
+(defmacro edges! [edge-specs]
+  (cons 'do
+        (mapcat (fn [[src tgt edge]]
+                  (list `(make-edge ~src ~tgt ~edge)))
+                (partition 3 edge-specs))))
+
 (defn test-graph []
   (let [root-id (root-node-id)]
-    (with-nodes! [net      :net
-                  music    :music
-                  synths   :synths
-                  kick    {:label :kick  :score 0.8}
-                  hat     {:label :hat   :score 0.3}
-                  snare   {:label :snare :score 0.4}
-                  bass    {:label :bass  :score 0.6}
-                  sessions :sessions
-                  take-six :take-six
-                  red-pill :red-pill]
-                 (make-edge root-id net       :net)
-                 (make-edge root-id music     :music)
-                 (make-edge music synths      :synths)
-                 (make-edge synths bass       :synth)
-                 (make-edge synths hat        :synth)
-                 (make-edge synths kick       :synth)
-                 (make-edge synths snare      :synth)
-                 (make-edge root-id sessions  :sessions)
-                 (make-edge sessions take-six :session)
-                 (make-edge take-six kick     :synth)
-                 (make-edge take-six bass     :synth)
-                 (make-edge sessions red-pill :session)
-                 (make-edge red-pill hat      :synth)
-                 (make-edge red-pill snare    :synth)
-                 (make-edge red-pill kick     :synth))))
+    (let-nodes [net      :net
+                music    :music
+                synths   :synths
+                kick    {:label :kick  :score 0.8}
+                hat     {:label :hat   :score 0.3}
+                snare   {:label :snare :score 0.4}
+                bass    {:label :bass  :score 0.6}
+                sessions :sessions
+                take-six :take-six
+                red-pill :red-pill]
+               (edges!
+                 [root-id  net      :net
+                  root-id  music    :music
+                  music    synths   :synths
+                  synths   bass     :synth
+                  synths   hat      :synth
+                  synths   kick     :synth
+                  synths   snare    :synth
+                  root-id  sessions :sessions
+                  sessions take-six :session
+                  take-six kick     :synth
+                  take-six bass     :synth
+                  sessions red-pill :session
+                  red-pill hat      :synth
+                  red-pill snare    :synth
+                  red-pill kick     :synth]))))
+
+(defn graph-apply [g f]
+  (jiraph/with-graph g
+    (f)))
 
 (defn test-fixture [f]
-  (jiraph/with-graph G
-    (clear-graph)
-    (test-graph)
-    (f)))
+  (graph-apply G #(do
+                    (clear-graph)
+                    (test-graph)
+                    (f))))
 
 (defn make-peers
   "Create n peers, each with a monotically increasing port number.
