@@ -181,14 +181,15 @@
 
 (defn- setup-peer-presence
   [p]
-  (let [h (local-addr)
-        p (:port p)
-        pchan (lamina/filter* #(not (and (= h (:host %)) (= p (:port %))))
+  (let [p-host (local-addr)
+        p-port (:port p)
+        pchan (lamina/filter* #(not (and (= p-host (:host %))
+                                         (= p-port (:port %))))
                              (presence-channel))]
     (lamina/receive-all pchan
       (fn [{:keys [id host port]}]
         (add-peer p id (plasma-url host port))))
-    (presence-broadcaster (peer-id p) h p (config :presence-period))))
+    (presence-broadcaster (peer-id p) p-host p-port (config :presence-period))))
 
 (defmulti rpc-handler
   "A general purpose rpc multimethod."
@@ -309,7 +310,7 @@
      (setup-peer-graph p)
      (on-connect p (partial handle-peer-connection p))
 
-     (when (:presence options)
+     (when (config :presence)
        (setup-peer-presence p))
      p)))
 

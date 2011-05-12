@@ -1,15 +1,23 @@
 (ns benchmark.auto-configure
   (:use
-    [plasma config]
-    [plasma.net peer presence]))
+    [plasma config api]
+    [plasma.net peer presence])
+  (:require [plasma.query.core :as q]
+            [logjam.core :as log]))
 
 (config :presence true)
 
+(log/repl :peer)
+(println "starting peer...")
 (def p (peer))
 
-(Thread/sleep 12000)
+(println "peer started")
+
+(println "sleeping 10 secs...")
+(Thread/sleep 10000)
 
 (let [ps (get-peers p)]
-  (println "Got" (count ps) "peers\n\n" ps))
+  (println "n-peers: " (count ps))
+  (println "peers: \n" ps))
 
-(System/exit)
+(close p)
