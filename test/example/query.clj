@@ -11,6 +11,7 @@
   (clear-graph)
   (let [root (root-node-id)] ; acme is root
     (let-nodes [
+                employees     :employees
                 alice         {:label :alice :gender :female}
                 bob           {:label :bob   :gender :male}
                 maria         {:label :maria :gender :female}
@@ -24,11 +25,12 @@
                 comp-3        {:label :component-3 :cost 75.00}
                 comp-4        {:label :component-4 :cost 120.00}
                 ]
-      (edges!
+      (make-edges
         [
-         root alice         :person
-         root bob           :person
-         root maria         :person
+         root employees     :employees
+         employees alice    :person
+         employees bob      :person
+         employees maria    :person
          root lugano        :location
          root geneva        :location
          root zurich        :location
@@ -171,60 +173,81 @@
   have components which were made in the specified location."
   [loc]
   (-> (q/path [location [(components) :made-in]])
-    (q/where (= loc (:label 'location)))))
+    (q/where (= loc (:label 'location)))
+    (q/project 'product)))
+
+; (acme (with-component-info (with-components-from :zurich-office)))
 
 ; order-by
 ; - asc
 ; - desc
-(def components-by-cost
+(defn components-by-cost
   "By default the sort order is ascending."
-  (-> components
+  []
+  (-> (components)
     (q/order-by 'component :cost)))
 
-(def products-by-price
+; (acme (with-component-info (components-by-cost)))
+
+(defn products-by-price
   "But you can specify descending like so."
-  (-> products
+  []
+  (-> (products)
     (q/order-by 'product :price :desc)))
+
+;(acme (with-product-info (products-by-price)))
 
 ; limit
 ; - need offset?
-(def cheapest-component
-  (-> components-by-cost
+(defn cheapest-component
+  []
+  (-> (components-by-cost)
     (q/limit 1)))
+
+;(acme (with-component-info (cheapest-component)))
 
 ; choose
 (defn n-random-components
   [n]
-  (-> components
+  (-> (components)
     (q/choose n)))
 
+;(dotimes [i 5]
+;  (acme (with-component-info (n-random-components 2))))
+
+; TODO: fix-me
 ; group-by
 (defn components-by-location
   [loc]
   (-> (with-components-from loc)
-    (order-by 'location :label)
+    (q/group-by* 'location :label)
     (with-component-info)))
 
 ; count
-(def num-products
-  (-> products
-    (count*)))
+(defn num-products
+  []
+  (-> (products)
+    (q/count*)))
 
 (defn num-products-with-components-from
   [loc]
-  (count* (with-components-from loc)))
+  (q/count* (q/distinct* (with-components-from loc)
+                     'component)))
 
 ; average
-(def average-product-price
+(defn average-product-price
+  []
   (-> products
     (avg 'product :price)))
 
 ; min/max
-(def cheapest-component
+(defn cheapest-component
+  []
   (-> components
     (min 'component :price)))
 
-(def most-expensive-component
+(defn most-expensive-component
+  []
   (-> components
     (min 'component :price)))
 

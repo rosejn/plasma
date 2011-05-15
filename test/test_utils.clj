@@ -18,7 +18,7 @@
         nodes (vec (apply concat nodes))]
     `(let ~nodes ~@body)))
 
-(defmacro edges! [edge-specs]
+(defmacro make-edges [edge-specs]
   (cons 'do
         (mapcat (fn [[src tgt edge]]
                   (list `(make-edge ~src ~tgt ~edge)))
@@ -36,7 +36,7 @@
                 sessions :sessions
                 take-six :take-six
                 red-pill :red-pill]
-               (edges!
+               (make-edges
                  [root-id  net      :net
                   root-id  music    :music
                   music    synths   :synths

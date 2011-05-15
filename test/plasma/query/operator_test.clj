@@ -146,6 +146,16 @@
     (Thread/sleep 20)
     (is (= (average [0.8 0.3 0.4 0.6]) (first (result tree-desc))))))
 
+; TODO: Finish me!
+(defn group-by-op-test []
+  #_(let [tree (traverse-base)
+        {:keys [p1 j3 t3]} tree
+        avg-desc (average-op (uuid) j3 (:id t3) :score)
+        tree-desc (assoc tree :proj avg-desc)]
+    (enqueue-and-close (:in p1) ROOT-ID)
+    (Thread/sleep 20)
+    (is (= (average [0.8 0.3 0.4 0.6]) (first (result tree-desc))))))
+
 (defn limit-op-test []
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
@@ -213,6 +223,8 @@
   (sort-op-test)
   (min-op-test)
   (max-op-test)
+  (average-op-test)
+  (group-by-op-test)
   (limit-op-test)
   (choose-op-test)
   (send-receive-op-test))

@@ -125,7 +125,7 @@
                                         a {:label (str "a-" n) :score 0.1}
                                         b {:label (str "b-" n) :score 0.5}
                                         c {:label (str "c-" n) :score 0.9}]
-                            (edges!
+                            (make-edges
                               [root-id net :net
                                root-id docs :docs
                                docs a :doc

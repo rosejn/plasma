@@ -1,6 +1,5 @@
 * make-node and make-edge query forms to not be doing with-peer-graph
-
-* create a link query type to connect one or more nodes
+* create a link query or function on peer/connection to connect one or more nodes
 
 (query (link src edge tgt))
 
@@ -12,6 +11,12 @@
  - what is default behavior in this case?
    * connect all of src to all of tgt
    * aggregate both inputs then perform linking
+
+* Add an "as" feature to project so it can rename properties in case of
+conflicts
+
+* Also let path take an optional plan as its first argument, which would
+let further paths bind on previously bound elements.
 
 -----------
 

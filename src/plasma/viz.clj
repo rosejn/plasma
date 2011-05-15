@@ -26,6 +26,10 @@
   [plan]
   (vij/draw-tree (tree-vecs plan)))
 
+(defmethod clojure.core/print-method :plasma.query.core/query
+  [query writer]
+  (.write writer (with-out-str (print-query query))))
+
 (defn- dot-edge
   [src tgt props options]
   (let [label (name (:label props))]
@@ -55,27 +59,32 @@
         node-props (:node-props options)
         lbl (if node-props
               (dot-record-label (dissoc n :edges) options)
-              (or (:label n)
+              (or (name (:label n))
                   d-id))]
         ;edges (get-edges id)
         ;label (or (:label n) d-id)
         ;label (if (keyword? label)
         ;        (name label)
         ;        label)]
-    (println (str "\t\"" d-id "\"" lbl))
+    (println (str "\t\"" d-id "\" [label=\"" lbl "\", shape=box]"))
     (doseq [[tgt-id props] (:edges n)]
-      (dot-edge d-id (trim-id tgt-id) props))))
+      (dot-edge d-id (trim-id tgt-id) props options))))
 
 (defn dot-graph
   "Output the dot (graphviz) graph description for the given graph."
   [g options]
   (with-graph g
-    (let [nodes (filter
+    (let [width  (or (:width options) 6)
+          height (or (:width options) 10)
+          aspect (or (:aspect options) 0.5)
+          nodes (filter
                   #(not= "UUID:META" %)
                   (node-ids :graph))
           node-props (:node-props options)]
       (with-out-str
         (println "digraph G {\n")
+        (println "\tratio=\"" aspect "\"")
+;        (println (str "\tsize=\"" width "," height "\"\n"))
         (if node-props
           (println "\tnode [shape=Mrecord]")
           (println "\tnode [shape=circle]"))
@@ -118,12 +127,12 @@
      (sh app out))))
 
 (defn graph->ps
-  [g]
-  (show-dot-graph g))
+  [g & [options]]
+   (show-dot-graph g options))
 
 (defn graph->browser
-  [g]
-  (show-dot-graph g {:out-format "svg" :app "chromium-browser"}))
+  [g & [options]]
+  (show-dot-graph g (merge options {:out-format "svg" :app "chromium-browser"})))
 
 (defn- label-table
   [top bottom]

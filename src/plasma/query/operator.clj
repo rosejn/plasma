@@ -305,6 +305,31 @@
      :left left
      :out out}))
 
+(defn distinct-op
+  [id left d-key d-props]
+  (let [left-out (:out left)
+        mem (ref {})
+        out (filter* (fn [pt]
+                       (log/format :flow "[distinct - %s] pt: %s" (trim-id id) pt)
+                       (let [d-id (get pt d-key)
+                             props (if (empty? d-props)
+                                     []
+                                     (select-keys (get pt d-id) d-props))
+                             mem-key [d-id props]
+                             _ (log/format :flow "[distinct - %s] mem-key: %s" (trim-id id) mem-key)
+                         res (dosync
+                           (if (get @mem mem-key)
+                             false
+                             (alter mem assoc mem-key true)))]
+                         (log/format :flow "[distinct - %s] res: %s" (trim-id id) res)))
+                     left-out)]
+    (flow-log "distinct" id left-out)
+    (on-drained left-out #(close out))
+    {:type :id-map
+     :id id
+     :left left
+     :out out}))
+
 (defn aggregate-op
   "Puts all incoming PTs into a buffer queue, and then when the input channel
   is closed dumps the whole buffer queue into the output queue.
@@ -372,50 +397,14 @@
                  [(apply max-key key-fn arg-seq)])]
     (aggregate-op id left max-fn "max")))
 
-(def PREDICATE-OP-MAP
-  {'= =
-   '== ==
-   'not= not=
-   '< <
-   '> >
-   '<= <=
-   '>= >=})
-
-; Expects a predicate in the form of:
-; {:type :predicate
-;  :property :score
-;  :value 0.5
-;  :operator '>}
-(defn select-op
-  "Performs a selection by accepting only the PTs for which the
-  value for the select-key results in true when passed to the
-  selection predicate."
-  [id left select-key predicate]
-  (let [left-out (:out left)
-        out      (channel)]
-    (siphon (filter*
-              (fn [pt]
-                (let [node-id (get pt select-key)
-                      node    (get pt node-id)
-                      {:keys [property operator value]} predicate
-                      pval (get node property)
-                      op (resolve operator)
-                      result (op pval value)]
-                  (log/format :flow "[select] (%s (%s node) %s) => (%s %s %s) => %s"
-                              operator property value
-                              operator pval value
-                              result)
-                  result))
-              left-out)
-            out)
-    (on-drained left-out #(close out))
-    (flow-log "select" id out)
-    {:type :select
-     :id id
-     :select-key select-key
-     :predicate predicate
-     :left left
-     :out out}))
+(defn group-by-op
+  "Aggregates the input and returns seqs of results grouped by a specific matching property."
+  [id left group-key group-prop]
+  (let [key-fn (fn [pt]
+                 (let [node (->> group-key (get pt) (get pt))]
+                   (get node group-prop)))
+        group-fn #(group-by key-fn %)]
+    (aggregate-op id left group-fn "group-by")))
 
 (defn property-op
   "Loads a node property from the database.  Used to pre-load
@@ -434,6 +423,7 @@
                         pt
                         (let [node     (find-node node-id)
                               vals     (select-keys node props)]
+                          (log/format :flow "[property] node: %s" node)
                           (assoc pt node-id (merge existing vals))))))
                   left-out)]
     (on-drained left-out #(close out))
@@ -491,25 +481,23 @@
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties."
 	[id left projections]
-  (log/format :op "project-op: %s" (seq projections))
+  (log/format :op "[project - %s] projections: %s"
+              (trim-id id) (seq projections))
   (let [left-out (:out left)
         out (map* (fn [pt]
                     (when pt
                       (reduce
                         (fn [result [project-key & props]]
-                          (log/format :flow "projecting[%s] result: %s\npt: %s" (str project-key "->" props) result pt)
-                          (if (empty? props)
-                            (merge result {:id (get pt project-key)})
-                            (let [m (get pt (get pt project-key))]
-                              #_(log/to :flow "pt: " pt "\nm: " m
-                                      "\nprops: " (select-keys m props))
-                              (merge result (select-keys m props)))))
+                          (log/format :flow "[project - %s] %s result: %s"
+                                      (trim-id id)
+                                      (str project-key "->" props)
+                                      result)
+                          (let [id (get pt project-key)
+                                m (assoc (get pt id) :id id)]
+                            (merge result (select-keys m props))))
                         {} projections)))
                   left-out)]
-    (on-closed left-out
-                (fn []
-                  (log/to :flow "project closing out................")
-                  (close out)))
+    (on-closed left-out #(close out))
     (flow-log "project" id out)
     {:type :project
      :id id

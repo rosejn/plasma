@@ -105,35 +105,6 @@
   [plan jbind paths]
   (first (reduce traversal-path [plan jbind] paths)))
 
-(defn- selection-ops
-  "Add the selection operators corresponding to a set of predicates
-  to a query plan."
-  [plan]
-  (let [preds (:filters plan)
-        ; flatten with binding name because each bind-point could
-        ; have more than one predicate attached (and ...)
-        flat-preds (partition 2 (mapcat (fn [[bind pred-seq]]
-                         (interleave (repeat bind)
-                                     pred-seq)) preds))]
-    (reduce
-      (fn [plan [binding pred]]
-        (log/to :query "pred: " pred)
-        (let [select-key (get-in plan [:pbind binding])
-              p-op (plan-op :property
-                            :deps [(:root plan)]
-                            :args [select-key [(:property pred)]])
-              s-op (plan-op :select
-                            :deps [(:id p-op)]
-                            :args [select-key pred])
-              ops (assoc (:ops plan)
-                         (:id p-op) p-op
-                         (:id s-op) s-op)]
-          (assoc plan
-                 :root (:id s-op)
-                 :ops ops)))
-      plan
-      flat-preds)))
-
 (defn load-props
   "Add a property loading operator to the query plan to add property
   values to the run-time path-map for downstream operators to utilize.
@@ -214,7 +185,7 @@
                                (throw (Exception. (format "Error trying to project using an invalid path binding: %s" bind-sym))))
                              (if props
                                (concat [project-key] props)
-                               [project-key])))
+                               [project-key :id])))
                       projections))
         proj-op (plan-op :project
                          :deps [root-op]
@@ -257,6 +228,21 @@
   (append-root-op plan (plan-op :limit
                                 :deps [root]
                                 :args [n])))
+
+(defn group-by*
+  [{:keys [root pbind] :as plan} group-bind group-prop]
+  (append-root-op plan (plan-op :group-by
+                                :deps [root]
+                                :args [(get pbind group-bind) group-prop])))
+
+(defn distinct*
+  [plan d-bind & props]
+  (let [{:keys [root pbind] :as plan} (if (empty? props)
+                                        plan
+                                        (load-props plan d-bind props))]
+    (append-root-op plan (plan-op :distinct
+                                  :deps [root]
+                                  :args [(get pbind d-bind) props]))))
 
 (defn has-projection?
   "Check whether a query plan contains a project operator."
@@ -317,25 +303,28 @@
         [plan jbind paths]
         (if (query? first-segment)
           (let [plan first-segment
-                plan (with-result-project plan)
-                plan (append-root-op plan (plan-op :id-map
-                                                   :deps [(:root plan)]))
-                sub-query-bind (gensym "sub-query-")
-                plan (assoc-in plan [:pbind sub-query-bind] (:root plan))
+;                plan (with-result-project plan)
+                sub-query-bind (default-project-binding plan)
+;                plan (append-root-op plan (plan-op :id-map
+;                                                   :deps [(:root plan)]))
+;                sub-query-bind (gensym "sub-query-")
+;                plan (assoc-in plan [:pbind sub-query-bind] (:root plan))
                 paths (cons [p1-bind (cons sub-query-bind other-segs)]
                             other-paths)
                 plan (update-in plan [:paths] concat paths)
                 jbind {sub-query-bind (:root plan)}]
             (log/to :query "nested sub-query: " jbind)
             [plan jbind paths])
-          [{:type :query
-            :id (uuid)
-            :root nil    ; root operator id
-            :params {}   ; param-name -> parameter-op
-            :ops {}      ; id         -> operator
-            :filters {}  ; binding    -> predicate
-            :pbind {}    ; symbol     -> traversal       (path binding)
-            :paths paths} {} paths])]
+          [(with-meta
+             {:type :query
+              :id (uuid)
+              :root nil    ; root operator id
+              :params {}   ; param-name -> parameter-op
+              :ops {}      ; id         -> operator
+              :filters {}  ; binding    -> predicate
+              :pbind {}    ; symbol     -> traversal       (path binding)
+              :paths paths}
+             {:type ::query}) {} paths])]
     (-> plan
       (with-traversal-tree jbind paths)
       (with-receive-op)
@@ -453,7 +442,9 @@
   [plan type]
   (filter #(= type (:type %)) (vals (:ops plan))))
 
-;TODO: Combine property-ops for the same key
+;TODO:
+; * Combine property-ops for the same key
+; * change :select oriented logic to filter, or change filter to select...
 (defn optimize-plan
   [plan]
   ; Pull property and select ops to just below the join after their associated traversals
