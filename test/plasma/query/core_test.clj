@@ -37,6 +37,7 @@
     (is (= #{:kick :bass :snare :hat}
                (set (map :label res))))))
 
+
 (defmacro run-time
   "Evaluates expr and returns the time it took to execute in ms."
   [expr]

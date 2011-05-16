@@ -255,7 +255,7 @@
                   :default
                   (let [tgts (keys (get-edges src-id edge-pred-fn))
                         pts (map #(assoc pt id %) tgts)]
-                    (log/format :flow "[traverse] %s - %s -> [%s]"
+                    #_(log/format :flow "[traverse] %s - %s -> [%s]"
                                 src-id edge-predicate
                                 (apply str (interpose " " (map trim-id tgts))))
                     (apply enqueue out pts)))))))
@@ -382,7 +382,9 @@
                        pval (get node min-prop)]
                    pval))
         min-fn (fn [arg-seq]
-                 [(apply min-key key-fn arg-seq)])]
+                 (if (empty? arg-seq)
+                   []
+                   [(apply min-key key-fn arg-seq)]))]
     (aggregate-op id left min-fn "min")))
 
 (defn max-op
@@ -394,7 +396,9 @@
                        pval (get node min-prop)]
                    pval))
         max-fn (fn [arg-seq]
-                 [(apply max-key key-fn arg-seq)])]
+                 (if (empty? arg-seq)
+                   []
+                   [(apply max-key key-fn arg-seq)]))]
     (aggregate-op id left max-fn "max")))
 
 (defn group-by-op
@@ -479,7 +483,10 @@
 
 (defn project-op
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
- maps containing properties."
+ maps containing properties.  The projections are of the form:
+
+   [project-key prop-1 prop-2 prop-3]
+ "
 	[id left projections]
   (log/format :op "[project - %s] projections: %s"
               (trim-id id) (seq projections))

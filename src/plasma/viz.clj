@@ -26,7 +26,7 @@
   [plan]
   (vij/draw-tree (tree-vecs plan)))
 
-(defmethod clojure.core/print-method :plasma.query.core/query
+(comment defmethod clojure.core/print-method :plasma.query.core/query
   [query writer]
   (.write writer (with-out-str (print-query query))))
 
@@ -59,8 +59,8 @@
         node-props (:node-props options)
         lbl (if node-props
               (dot-record-label (dissoc n :edges) options)
-              (or (name (:label n))
-                  d-id))]
+              (or (:label n) d-id))
+        lbl (if (keyword? lbl) (name lbl) lbl)]
         ;edges (get-edges id)
         ;label (or (:label n) d-id)
         ;label (if (keyword? label)
@@ -68,7 +68,10 @@
         ;        label)]
     (println (str "\t\"" d-id "\" [label=\"" lbl "\", shape=box]"))
     (doseq [[tgt-id props] (:edges n)]
-      (dot-edge d-id (trim-id tgt-id) props options))))
+      (dot-edge d-id (if (uuid? tgt-id)
+                       (trim-id tgt-id)
+                       tgt-id)
+                props options))))
 
 (defn dot-graph
   "Output the dot (graphviz) graph description for the given graph."

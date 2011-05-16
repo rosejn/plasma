@@ -111,10 +111,13 @@ For example:\n\t(with-graph G (find-node id))\n")))
 
 (defn assoc-node
   "Associate key/value pairs with a given node id."
-  [id & key-vals]
-  (let [[old-props new-props] (apply jiraph/assoc-node! :graph
-                                     id (apply hash-map key-vals))]
-    (node-event id new-props)))
+  [uuid & key-vals]
+  (let [uuid (if (= uuid ROOT-ID)
+               (root-node-id)
+               uuid)]
+    (let [[old-props new-props] (apply jiraph/assoc-node! :graph
+                                       uuid (apply hash-map key-vals))]
+      (node-event uuid new-props))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Edge functions
@@ -130,6 +133,9 @@ For example:\n\t(with-graph G (find-node id))\n")))
   (let [src (if (= ROOT-ID src)
               (root-node-id)
               src)
+        tgt (if (= ROOT-ID tgt)
+              (root-node-id)
+              tgt)
         props (cond
                 (keyword? label-or-props) {:label label-or-props}
                 (and (map? label-or-props)

@@ -303,17 +303,11 @@
         [plan jbind paths]
         (if (query? first-segment)
           (let [plan first-segment
-;                plan (with-result-project plan)
                 sub-query-bind (default-project-binding plan)
-;                plan (append-root-op plan (plan-op :id-map
-;                                                   :deps [(:root plan)]))
-;                sub-query-bind (gensym "sub-query-")
-;                plan (assoc-in plan [:pbind sub-query-bind] (:root plan))
                 paths (cons [p1-bind (cons sub-query-bind other-segs)]
                             other-paths)
                 plan (update-in plan [:paths] concat paths)
                 jbind {sub-query-bind (:root plan)}]
-            (log/to :query "nested sub-query: " jbind)
             [plan jbind paths])
           [(with-meta
              {:type :query

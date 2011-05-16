@@ -9,9 +9,8 @@
 (defn make-acme-graph
   []
   (clear-graph)
-  (let [root (root-node-id)] ; acme is root
-    (let-nodes [
-                employees     :employees
+  (construct
+    (-> (nodes [employees     :employees
                 alice         {:label :alice :gender :female}
                 bob           {:label :bob   :gender :male}
                 maria         {:label :maria :gender :female}
@@ -24,36 +23,34 @@
                 comp-2        {:label :component-2 :cost 8.00}
                 comp-3        {:label :component-3 :cost 75.00}
                 comp-4        {:label :component-4 :cost 120.00}
-                ]
-      (make-edges
-        [
-         root employees     :employees
-         employees alice    :person
-         employees bob      :person
-         employees maria    :person
-         root lugano        :location
-         root geneva        :location
-         root zurich        :location
-         alice geneva       :manages
-         geneva alice       :managed-by
-         bob zurich         :manages
-         zurich bob         :managed-by
-         maria lugano       :manages
-         lugano maria       :managed-by
-         root product-alpha :product
-         root product-beta  :product
-         product-alpha lugano :made-in
-         product-beta  lugano :made-in
-         product-alpha comp-1 :component
-         product-alpha comp-2 :component
-         product-beta  comp-2 :component
-         product-beta  comp-3 :component
-         product-beta  comp-4 :component
-         comp-1 zurich :made-in
-         comp-2 zurich :made-in
-         comp-3 geneva :made-in
-         comp-4 geneva :made-in
-         ]))))
+                ])
+      (edges [root          employees     :employees
+							employees     alice         :person
+							employees     bob           :person
+							employees     maria         :person
+							root          lugano        :location
+							root          geneva        :location
+							root          zurich        :location
+							alice         geneva        :manages
+							geneva        alice         :managed-by
+							bob           zurich        :manages
+							zurich        bob           :managed-by
+							maria         lugano        :manages
+							lugano        maria         :managed-by
+							root          product-alpha :product
+							root          product-beta  :product
+							product-alpha lugano        :made-in
+							product-beta  lugano        :made-in
+							product-alpha comp-1        :component
+							product-alpha comp-2        :component
+							product-beta  comp-2        :component
+							product-beta  comp-3        :component
+							product-beta  comp-4        :component
+							comp-1        zurich        :made-in
+							comp-2        zurich        :made-in
+							comp-3        geneva        :made-in
+							comp-4        geneva        :made-in
+							]))))
 
 (defn setup-acme
   []

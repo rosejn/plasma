@@ -1,6 +1,7 @@
 (ns plasma.net.peer-test
   (:use [plasma config util graph api]
         [plasma.net url connection peer]
+        [plasma.query construct]
         test-utils
         clojure.contrib.generic.math-functions
         clojure.test
@@ -104,12 +105,12 @@
         (close local)
         (close remote)))))
 
-(deftest many-proxy-node-test []
+(deftest many-proxy-node-test
   (dosync (alter config* assoc
                  :peer-port (+ 10000 (rand-int 20000))
                  :presence-port (+ 10000 (rand-int 20000))))
   (let [n-peers 10
-        port (+ 1000 (rand-int 10000))
+        port  (+ 1000 (rand-int 10000))
         local (peer {:port port})
         peers (doall
                 (map
@@ -118,36 +119,35 @@
                                    :manager (:manager local)})]
                       (with-peer-graph p
                         (clear-graph)
-                        (let [root-id (root-node-id)]
-                          (assoc-node root-id :peer-id n)
-                          (let-nodes [net :net
-                                        docs :docs
-                                        a {:label (str "a-" n) :score 0.1}
-                                        b {:label (str "b-" n) :score 0.5}
-                                        c {:label (str "c-" n) :score 0.9}]
-                            (make-edges
-                              [root-id net :net
-                               root-id docs :docs
-                               docs a :doc
-                               docs b :doc
-                               docs c :doc])
-                          [p root-id n])))))
+                        (assoc-node ROOT-ID :peer-id n)
+                        (construct
+                          (-> (nodes [root ROOT-ID
+                                      net :net
+                                      docs :docs
+                                      a {:label (str "a-" n) :score 0.1}
+                                      b {:label (str "b-" n) :score 0.5}
+                                      c {:label (str "c-" n) :score 0.9}])
+                            (edges [root net  :net
+                                    root docs :docs
+                                    docs a    :doc
+                                    docs b    :doc
+                                    docs c    :doc]))))
+                      [p (with-peer-graph p (root-node-id)) n]))
                   (range n-peers)))]
     (try
       (with-peer-graph local
         (clear-graph)
-        (let [root-id (root-node-id)
-              net (make-node {:label :net})]
-          (make-edge root-id net {:label :net})
+        (let [net (make-node {:label :net})]
+          (make-edge ROOT-ID net {:label :net})
           (doseq [[p peer-root n] peers]
             (make-edge net
-                  (make-proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
-                  :peer))))
-        (let [q (-> (q/path [doc [:net :peer :docs :doc]])
-                  (q/where (> (:score 'doc) 0.5))
-                  (q/project ['doc :label :score]))
-              res (query local q)]
-          (is (= n-peers (count res))))
+                       (make-proxy-node peer-root (plasma-url "localhost" (+ port n 1)))
+                       :peer))))
+      (let [q (-> (q/path [doc [:net :peer :docs :doc]])
+                (q/where (> (:score 'doc) 0.5))
+                (q/project ['doc :label :score]))
+            res (query local q)]
+        (is (= n-peers (count res))))
       (finally
         (close local)
         (close-peers (map first peers))))))

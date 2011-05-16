@@ -1,32 +1,17 @@
 (ns test-utils
   (:use [plasma graph config util api]
         [plasma.net peer url connection bootstrap]
-        [plasma.query operator]
+        [plasma.query operator construct]
         [clojure test stacktrace])
   (:require [lamina.core :as lamina]
             [jiraph.graph :as jiraph]))
 
 (def G (open-graph "db/test"))
 
-(defmacro let-nodes [bindings & body]
-  (let [nodes (map (fn [[node-sym props]]
-                     (let [props (if (keyword? props)
-                                   {:label props}
-                                   props)]
-                       [node-sym `(make-node ~props)]))
-                   (partition 2 bindings))
-        nodes (vec (apply concat nodes))]
-    `(let ~nodes ~@body)))
-
-(defmacro make-edges [edge-specs]
-  (cons 'do
-        (mapcat (fn [[src tgt edge]]
-                  (list `(make-edge ~src ~tgt ~edge)))
-                (partition 3 edge-specs))))
-
 (defn test-graph []
-  (let [root-id (root-node-id)]
-    (let-nodes [net      :net
+  (construct
+    (-> (nodes [root     ROOT-ID
+                net      :net
                 music    :music
                 synths   :synths
                 kick    {:label :kick  :score 0.8}
@@ -35,23 +20,23 @@
                 bass    {:label :bass  :score 0.6}
                 sessions :sessions
                 take-six :take-six
-                red-pill :red-pill]
-               (make-edges
-                 [root-id  net      :net
-                  root-id  music    :music
-                  music    synths   :synths
-                  synths   bass     :synth
-                  synths   hat      :synth
-                  synths   kick     :synth
-                  synths   snare    :synth
-                  root-id  sessions :sessions
-                  sessions take-six :session
-                  take-six kick     :synth
-                  take-six bass     :synth
-                  sessions red-pill :session
-                  red-pill hat      :synth
-                  red-pill snare    :synth
-                  red-pill kick     :synth]))))
+                red-pill :red-pill])
+      (edges
+        [root     net      :net
+         root     music    :music
+         music    synths   :synths
+         synths   bass     :synth
+         synths   hat      :synth
+         synths   kick     :synth
+         synths   snare    :synth
+         root     sessions :sessions
+         sessions take-six :session
+         take-six kick     :synth
+         take-six bass     :synth
+         sessions red-pill :session
+         red-pill hat      :synth
+         red-pill snare    :synth
+         red-pill kick     :synth]))))
 
 (defn graph-apply [g f]
   (jiraph/with-graph g
