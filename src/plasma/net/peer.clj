@@ -5,6 +5,7 @@
   (:require [logjam.core :as log]
             [lamina.core :as lamina]
             [jiraph.graph :as jiraph]
+            [plasma.query.construct :as c]
             [plasma.query.core :as q]))
 
 (defmacro with-peer-graph [p & body]
@@ -29,12 +30,10 @@
     [this id]
     (with-peer-graph this (find-node id)))
 
-  (link
-    [this src node-props edge-props]
+  (construct
+    [this spec]
     (with-peer-graph this
-      (let [n (make-node node-props)]
-        (make-edge src n edge-props)
-        n)))
+      (c/construct* spec)))
 
   (query
     [this q]
@@ -199,6 +198,10 @@
   [peer req]
   (get-node peer (first (:params req))))
 
+(defmethod rpc-handler 'construct
+  [peer req]
+  (construct peer (first (:params req))))
+
 (defmethod rpc-handler 'query
   [peer req]
   (apply query peer (:params req)))
@@ -328,8 +331,12 @@
                     #(lamina/enqueue res (:result %)))
     res))
 
-(defn peer-link
-  [con src node-map edge-props])
+(defn peer-construct
+  [con spec]
+  (let [res (lamina/constant-channel)]
+    (lamina/receive (request con 'construct [spec])
+                    #(lamina/enqueue res (:result %)))
+    res))
 
 (defn peer-query-channel
   ([con q]
@@ -377,7 +384,7 @@
 (extend plasma.net.connection.Connection
   IQueryable
   {:get-node peer-get-node
-   :link peer-link
+   :construct peer-construct
    :query peer-query
    :query-channel peer-query-channel
    :recur-query peer-recur-query

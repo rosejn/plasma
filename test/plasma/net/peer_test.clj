@@ -52,8 +52,12 @@
         manager (:manager local)]
     (try
       (reset-peer local)
-      (let [foo (link local root-id {:name "foo"} :foo)
-            bar (link local foo {:name "bar"} :bar)]
+      (let [{:keys [foo bar]} (construct local
+                                         (-> (nodes
+                                               [foo {:name "foo"}
+                                                bar {:name "bar"}])
+                                           (edges [ROOT-ID foo :foo
+                                                   foo bar :bar])))]
         (is (= bar (:id (first (query local (q/path [:foo :bar])))))))
 
       (let [con (get-connection manager (plasma-url "localhost" port))]
@@ -86,14 +90,15 @@
       (reset-peer remote)
       ; Add a proxy node to the local graph pointing to the root of the remote
       ; graph.
-      (let [remote-root (:id (get-node remote ROOT-ID))
-            _ (log/to :peer "remote-root: " remote-root)
-            net (first (query local (q/path [:net])))
-
-            _ (log/to :peer "net: " net)
-            peer-proxy (link local (:id net) {:id remote-root
-                                          :proxy (plasma-url "localhost" (:port remote))}
-                               {:label :peer})]
+      (let [remote-root (:id (get-node remote ROOT-ID))]
+            (log/to :peer "remote-root: " remote-root)
+            (construct local
+                         (-> (nodes
+                               [net (q/path [:net])
+                                remote {:id remote-root
+                                        :proxy (plasma-url "localhost" (:port remote))}])
+                           (edges
+                             [net remote :peer])))
 
         ; Now issue a query that will traverse over the network
         ; through the proxy node.
@@ -119,19 +124,19 @@
                                    :manager (:manager local)})]
                       (with-peer-graph p
                         (clear-graph)
-                        (assoc-node ROOT-ID :peer-id n)
-                        (construct
-                          (-> (nodes [root ROOT-ID
-                                      net :net
-                                      docs :docs
-                                      a {:label (str "a-" n) :score 0.1}
-                                      b {:label (str "b-" n) :score 0.5}
-                                      c {:label (str "c-" n) :score 0.9}])
-                            (edges [root net  :net
-                                    root docs :docs
-                                    docs a    :doc
-                                    docs b    :doc
-                                    docs c    :doc]))))
+                        (assoc-node ROOT-ID :peer-id n))
+                      (construct p
+                                 (-> (nodes [root ROOT-ID
+                                             net :net
+                                             docs :docs
+                                             a {:label (str "a-" n) :score 0.1}
+                                             b {:label (str "b-" n) :score 0.5}
+                                             c {:label (str "c-" n) :score 0.9}])
+                                   (edges [root net  :net
+                                           root docs :docs
+                                           docs a    :doc
+                                           docs b    :doc
+                                           docs c    :doc])))
                       [p (with-peer-graph p (root-node-id)) n]))
                   (range n-peers)))]
     (try

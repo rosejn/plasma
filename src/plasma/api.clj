@@ -27,9 +27,9 @@
     [this id]
     "Lookup a node by UUID.")
 
-  (link
-    [this src node-map edge-props]
-    "Create an edge from src to a new node with the given edge properties.")
+  (construct
+    [this spec]
+    "Construct a graph based on a spec.")
 
   (query
     [this q] [this q params] [this q params timeout]

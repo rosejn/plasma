@@ -52,24 +52,29 @@
   (let [id-mapped (map
                     (fn [[sym props]]
                       [sym (cond
-                             (uuid? props) [props]
+                             (uuid? props) props
                              (q/query? props) (map :id (q/query props))
-                             (map? props)  [(make-node props)])])
-                    (:nodes spec))]
-    (into {} id-mapped)))
+                             (map? props)  (make-node props))])
+                    (:nodes spec))
+        node-map (into {} id-mapped)
+        node-map (assoc node-map 'ROOT-ID ROOT-ID)]
+    node-map))
 
 (defn- make-edges
   [spec node-map]
   (let [edges (map (fn [[src tgt props]]
-                     [(node-map src)
-                      (node-map tgt)
-                      props])
+                     (let [srcs (node-map src)
+                           srcs (if (uuid? srcs) [srcs] srcs)
+                           tgts (node-map tgt)
+                           tgts (if (uuid? tgts) [tgts] tgts)]
+                     [srcs tgts props]))
                    (:edges spec))]
     (doseq [[srcs tgts props] edges]
       (doseq [src srcs tgt tgts]
-        (make-edge src tgt props)))))
+        (make-edge src tgt props))))
+  node-map)
 
-(defn construct
+(defn construct*
   [spec]
   (when-not jiraph/*graph*
     (throw (Exception. "Cannot run a construct without binding a graph.")))

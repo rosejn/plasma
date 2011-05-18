@@ -1,16 +1,17 @@
 (ns test-utils
   (:use [plasma graph config util api]
         [plasma.net peer url connection bootstrap]
-        [plasma.query operator construct]
+        [plasma.query operator]
         [clojure test stacktrace])
   (:require [lamina.core :as lamina]
+            [plasma.query.construct :as c]
             [jiraph.graph :as jiraph]))
 
 (def G (open-graph "db/test"))
 
 (defn test-graph []
-  (construct
-    (-> (nodes [root     ROOT-ID
+  (c/construct*
+    (-> (c/nodes [root     ROOT-ID
                 net      :net
                 music    :music
                 synths   :synths
@@ -21,7 +22,7 @@
                 sessions :sessions
                 take-six :take-six
                 red-pill :red-pill])
-      (edges
+      (c/edges
         [root     net      :net
          root     music    :music
          music    synths   :synths
