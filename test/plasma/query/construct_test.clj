@@ -9,11 +9,11 @@
 (deftest construct-test
   (clear-graph)
   (make-edge ROOT-ID (make-node {:label :locations}) :locations)
-  (let [spec (-> (nodes [factory {:name "Jonestown" :employee-count 65}
-                          manager {:label :manager :name "Larry Jones"}
-                          widget  :widget-a
-                          root ROOT-ID
-                          locations (q/path [:locations])])
+  (let [spec (-> (nodes [factory   {:name "Jonestown" :employee-count 65}
+                         manager   {:label :manager :name "Larry Jones"}
+                         widget     :widget-a
+                         root       ROOT-ID
+                         locations (q/path [:locations])])
                 (edges [locations factory :factory
                         factory widget :manufactures
                         factory manager :manager

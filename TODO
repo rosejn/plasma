@@ -1,23 +1,17 @@
 * Add a (graph-event-channel [g]) which will publish an event any time the graph
 is modified.
 
-* Add an "as" feature to project so it can rename properties in case of
-conflicts
+* figure out an error handling policy and right some helpers to
+ - make it quick and easy to throw exceptions from query-plan builder
+functions when bad arguments are passed
+ - report on errors that occurred during query processing
 
-* Also let path take an optional plan as its first argument, which would
-let further paths bind on previously bound elements.
+ ** maybe pipelines?
 
------------
+* Query form (ala construct and query) to:
+- update node/edge
+- delete node/edge
 
-* represent queries using a query specification, rather than the query plan
-operator tree
-
-* query spec map:
- - paths
- - selections
- - expressions
- - property-loads (to load as we traverse)
- - projection
 -----------
 
 * recursive queries
@@ -25,10 +19,6 @@ operator tree
 depending on whether it gets a proxy node as a result
 
 ----------
-
-* distinct operator
-
-* some kind of link-union function that can take a set of peer nodes and link up the new ones
 
 * new peer connections should always send their URL as the first message so they
   can be correctly stored in the connection cache, otherwise we just have the
@@ -44,9 +34,6 @@ look at moving some of the code to pipelines.
 
 Supporting experiments:
 
-* insertion
- - to push nodes onto a peer
-
 * enable logging of typical networking metrics:
  - bytes
  - messages
@@ -54,10 +41,9 @@ Supporting experiments:
  - latency
 
 * implement recursive and iterative operators
+
 * implement query packet TTL counter that decrements at each hop
  - packets dropped when (zero? TTL)
-* implement latency introducer stage in pipeline so we can simulate larger
-networks
 
 ----------------------------------------------------------
 
@@ -74,13 +60,19 @@ methods:
 * instance version
 
 -------------------------------
-
-* insert node/edge
-* update node/edge
-* delete node/edge
-
--------------------------------
-Long Term:
+Longer Term:
 -------------------------------
 
 * look into jiraph versioning mechanism
+
+-----------
+
+* represent queries using a query specification, rather than the query plan
+operator tree
+
+* query spec map:
+ - paths
+ - selections
+ - expressions
+ - property-loads (to load as we traverse)
+ - projection

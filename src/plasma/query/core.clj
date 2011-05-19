@@ -152,16 +152,24 @@
          (expr* ~plan @*expr-vars* evaled-expr#)))))
 
 (defn project
-  "Project the incoming path-tuples so the result will be either a set of node UUIDs or a set of node maps with properties.
+  "Project the set of path results to maps containing specific properties of
+  nodes along the path.
 
-  (let [q (path [person [:app :social :friends]])]
+  (let [q (path [app    [:app :social]
+                 person [:friends]])]
     ...
 
     ; get the UUIDs of person nodes
-    (project q person)
+    (project q 'person)
 
     ; get the given set of props for each person node
-    (project [person :name :email :age]))
+    (project ['person :name :email :age])
+
+    ; get properties from multiple nodes along the path
+    (project ['app :label] ['person :name :email :age])
+
+    ; and in case of conflicts, you can rename properties using :as
+    (project ['app [:name :as :app-name]] ['person :name :email :age]))
   "
   [plan & args]
   (if-let [arg (some #(not (or (symbol? %)
@@ -174,19 +182,24 @@
         _ (log/to :query "[project] projections:" (seq projections))
         plan (reduce
                (fn [plan [bind-sym & properties]]
-                 (if (not (empty? properties))
-                   (load-props plan bind-sym properties)
+                 (if-not (empty? properties)
+                   (let [props (map #(if (vector? %) (first %) %) properties)]
+                     (load-props plan bind-sym props))
                    plan))
                plan projections)
         root-op (:root plan)
-        projections (doall (map (fn [[bind-sym & props]]
-                           (let [project-key (get (:pbind plan) bind-sym)]
-                             (when (nil? project-key)
-                               (throw (Exception. (format "Error trying to project using an invalid path binding: %s" bind-sym))))
-                             (if props
-                               (concat [project-key] props)
-                               [project-key :id])))
-                      projections))
+        projections (doall
+                      (map (fn [[bind-sym & props]]
+                             (let [project-key (get (:pbind plan) bind-sym)]
+                               (when (nil? project-key)
+                                 (throw (Exception. (format "Error trying to project using an invalid path binding: %s" bind-sym))))
+                               (let [props (or props [:id])
+                                     props (map #(if (vector? %)
+                                                   [(first %) (nth % 2)]
+                                                   [% %])
+                                                props)]
+                                 (concat [project-key] props))))
+                           projections))
         proj-op (plan-op :project
                          :deps [root-op]
                          :args [projections])]
@@ -200,42 +213,59 @@
                                   :args [])
                          :numerical? true)))
 
-(defn avg
-  "Take the average of a set of property values bound to a path expression variable."
-  [{:keys [root ops pbind] :as plan} avg-var avg-prop]
-  (let [avg-key (get pbind avg-var)
-        p-op (plan-op :property
-                      :deps [root]
-                      :args [avg-key [avg-prop]])
-        avg-op (assoc (plan-op :average
-                               :deps [(:id p-op)]
-                               :args [avg-key avg-prop])
+(defn- numerical-op
+  [plan op-name op-var op-prop]
+  (let [{:keys [root ops pbind] :as plan} (load-props plan op-var [op-prop])
+        op-key (get pbind op-var)
+        num-op (assoc (plan-op op-name
+                               :deps [root]
+                               :args [op-key op-prop])
                       :numerical? true)]
     (assoc plan
-           :root (:id avg-op)
+           :root (:id num-op)
            :ops (assoc ops
-                       (:id p-op) p-op
-                       (:id avg-op) avg-op))))
+                       (:id num-op) num-op))))
+
+(defn avg
+  "Take the average of a set of property values bound to a path expression variable."
+  [plan avg-var avg-prop]
+  (numerical-op plan :average avg-var avg-prop))
+
+(defn max*
+  "Take the maximum of a set of property values bound to a path expression variable."
+  [plan max-var max-prop]
+  (numerical-op plan :max max-var max-prop))
+
+(defn min*
+  "Take the minimum of a set of property values bound to a path expression variable."
+  [plan min-var min-prop]
+  (numerical-op plan :min min-var min-prop))
 
 (defn choose
+  "Take N random elements from the result set."
   [{root :root :as plan} n]
   (append-root-op plan (plan-op :choose
                                 :deps [root]
                                 :args [n])))
 
 (defn limit
+  "Take the first N elements from the result set."
   [{root :root :as plan} n]
   (append-root-op plan (plan-op :limit
                                 :deps [root]
                                 :args [n])))
 
 (defn group-by*
-  [{:keys [root pbind] :as plan} group-bind group-prop]
-  (append-root-op plan (plan-op :group-by
-                                :deps [root]
-                                :args [(get pbind group-bind) group-prop])))
+  "Group the result set by a node's property value."
+  [plan group-bind group-prop]
+  (let [{:keys [root pbind] :as plan} (load-props plan group-bind [group-prop])]
+    (append-root-op plan (plan-op :group-by
+                                  :deps [root]
+                                  :args [(get pbind group-bind) group-prop]))))
 
 (defn distinct*
+  "Return only one element in the result set for each instance of a specific binding ID
+  and/or property value(s)."
   [plan d-bind & props]
   (let [{:keys [root pbind] :as plan} (if (empty? props)
                                         plan
@@ -545,9 +575,11 @@
   (when-not *graph*
     (throw (Exception. "Cannot run a query without binding a graph.
 \nFor example:\n\t(with-graph G (query q))\n")))
-  (log/format :flow "[run-query] query: %s
-                    query-params: %s
-                    input-params: %s"
+  (log/format :flow "\n\n\n-----------------------------------------------------
+[run-query]
+query: %s
+query-params: %s
+input-params: %s"
               (trim-id (:id tree))
               (keys (:params tree))
               param-map)

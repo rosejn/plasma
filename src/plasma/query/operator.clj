@@ -222,8 +222,10 @@
     (ensure s)
     (if (@s id)
       false
-      (alter s conj id))))
+      (alter s conj id)))
+  true)
 
+; TODO: Using visitation causes problems with some queries (i.e. example/products-with-components-from), so maybe it's better to have the duplicate results after all...
 (defn traverse-op
 	"Uses the src-key to lookup a node ID from each PT in the in queue.
  For each source node traverse the edges passing the edge-predicate, and put
@@ -235,7 +237,7 @@
         edge-pred-fn (predicate-fn edge-predicate)]
     (receive-all in
       (fn [pt]
-        (log/format :flow "[traverse - %s] pt: %s" (trim-id id) pt)
+        #_(log/format :flow "[traverse - %s] pt: %s" (trim-id id) pt)
         (when pt
           (let [src-id (get pt src-key)]
             (when (visit visited src-id)
@@ -255,7 +257,7 @@
                   :default
                   (let [tgts (keys (get-edges src-id edge-pred-fn))
                         pts (map #(assoc pt id %) tgts)]
-                    #_(log/format :flow "[traverse] %s - %s -> [%s]"
+                    (log/format :flow "[traverse] %s - %s -> [%s]"
                                 src-id edge-predicate
                                 (apply str (interpose " " (map trim-id tgts))))
                     (apply enqueue out pts)))))))
@@ -277,7 +279,7 @@
         right-in  (:in right)
         right-out (:out right)
         out				(channel)]
-    (log/format :flow "[join - %s] left: %s right: %s" (trim-id id)
+    #_(log/format :flow "[join - %s] left: %s right: %s" (trim-id id)
                 (trim-id (:id left)) (trim-id (:id right)))
     (siphon left-out right-in)
     (siphon right-out out)
@@ -310,18 +312,18 @@
   (let [left-out (:out left)
         mem (ref {})
         out (filter* (fn [pt]
-                       (log/format :flow "[distinct - %s] pt: %s" (trim-id id) pt)
                        (let [d-id (get pt d-key)
                              props (if (empty? d-props)
                                      []
                                      (select-keys (get pt d-id) d-props))
                              mem-key [d-id props]
-                             _ (log/format :flow "[distinct - %s] mem-key: %s" (trim-id id) mem-key)
+                             ;_ (log/format :flow "[distinct - %s] mem-key: %s" (trim-id id) mem-key)
                          res (dosync
                            (if (get @mem mem-key)
                              false
                              (alter mem assoc mem-key true)))]
-                         (log/format :flow "[distinct - %s] res: %s" (trim-id id) res)))
+                         (log/format :flow "[distinct - %s] res: %s" (trim-id id) res)
+                         res))
                      left-out)]
     (flow-log "distinct" id left-out)
     (on-drained left-out #(close out))
@@ -407,7 +409,10 @@
   (let [key-fn (fn [pt]
                  (let [node (->> group-key (get pt) (get pt))]
                    (get node group-prop)))
-        group-fn #(group-by key-fn %)]
+        group-fn (fn [pts]
+                   (let [res (vals (group-by key-fn pts))]
+                     (log/to :flow "[group-by] res: " res)
+                     res))]
     (aggregate-op id left group-fn "group-by")))
 
 (defn property-op
@@ -421,13 +426,13 @@
                     (let [node-id  (get pt pt-key)
                           existing (get pt node-id)]
                       ; Only load props from disk of they don't already exist
-                      (log/format :flow "[property] pt-key: %s props: %s\npt: %s"
+                      #_(log/format :flow "[property] pt-key: %s props: %s\npt: %s"
                                   pt-key props pt)
                       (if (every? #(contains? existing %) props)
                         pt
                         (let [node     (find-node node-id)
                               vals     (select-keys node props)]
-                          (log/format :flow "[property] node: %s" node)
+                          #_(log/format :flow "[property] node: %s" node)
                           (assoc pt node-id (merge existing vals))))))
                   left-out)]
     (on-drained left-out #(close out))
@@ -485,7 +490,7 @@
 	"Project will turn a stream of PTs into a stream of either node UUIDs or node
  maps containing properties.  The projections are of the form:
 
-   [project-key prop-1 prop-2 prop-3]
+   [project-key [prop-1 p1-label] [prop-2 p2-label] [prop-3 p3-label]
  "
 	[id left projections]
   (log/format :op "[project - %s] projections: %s"
@@ -495,13 +500,20 @@
                     (when pt
                       (reduce
                         (fn [result [project-key & props]]
+                          (let [pid (get pt project-key)
+                                m (assoc (get pt pid) :id pid)
+                                prop-keys (map first props)
+                                prop-vals (select-keys m prop-keys)
+                                labeled-props (into {}
+                                                    (map (fn [[k l]]
+                                                           [l (get prop-vals k)])
+                                                         props))
+                                res (merge result labeled-props)]
                           (log/format :flow "[project - %s] %s result: %s"
                                       (trim-id id)
                                       (str project-key "->" props)
-                                      result)
-                          (let [id (get pt project-key)
-                                m (assoc (get pt id) :id id)]
-                            (merge result (select-keys m props))))
+                                      res)
+                            res))
                         {} projections)))
                   left-out)]
     (on-closed left-out #(close out))

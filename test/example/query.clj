@@ -1,6 +1,7 @@
 (ns example.query
   (:use plasma.core
-        test-utils)
+        test-utils
+        clojure.stacktrace)
   (require [plasma.query.core :as q]
            [logjam.core :as log]))
 
@@ -9,7 +10,7 @@
 (defn make-acme-graph
   []
   (clear-graph)
-  (construct
+  (construct*
     (-> (nodes [employees     :employees
                 alice         {:label :alice :gender :female}
                 bob           {:label :bob   :gender :male}
@@ -24,32 +25,32 @@
                 comp-3        {:label :component-3 :cost 75.00}
                 comp-4        {:label :component-4 :cost 120.00}
                 ])
-      (edges [root          employees     :employees
-							employees     alice         :person
-							employees     bob           :person
-							employees     maria         :person
-							root          lugano        :location
-							root          geneva        :location
-							root          zurich        :location
-							alice         geneva        :manages
-							geneva        alice         :managed-by
-							bob           zurich        :manages
-							zurich        bob           :managed-by
-							maria         lugano        :manages
-							lugano        maria         :managed-by
-							root          product-alpha :product
-							root          product-beta  :product
-							product-alpha lugano        :made-in
-							product-beta  lugano        :made-in
-							product-alpha comp-1        :component
-							product-alpha comp-2        :component
-							product-beta  comp-2        :component
-							product-beta  comp-3        :component
-							product-beta  comp-4        :component
-							comp-1        zurich        :made-in
-							comp-2        zurich        :made-in
-							comp-3        geneva        :made-in
-							comp-4        geneva        :made-in
+      (edges [ROOT-ID       employees     :employees
+              employees     alice         :person
+              employees     bob           :person
+              employees     maria         :person
+              ROOT-ID       lugano        :location
+              ROOT-ID       geneva        :location
+              ROOT-ID       zurich        :location
+              alice         geneva        :manages
+              geneva        alice         :managed-by
+              bob           zurich        :manages
+              zurich        bob           :managed-by
+              maria         lugano        :manages
+              lugano        maria         :managed-by
+              ROOT-ID       product-alpha :product
+              ROOT-ID       product-beta  :product
+              product-alpha lugano        :made-in
+              product-beta  lugano        :made-in
+              product-alpha comp-1        :component
+              product-alpha comp-2        :component
+              product-beta  comp-2        :component
+              product-beta  comp-3        :component
+              product-beta  comp-4        :component
+              comp-1        zurich        :made-in
+              comp-2        zurich        :made-in
+              comp-3        geneva        :made-in
+              comp-4        geneva        :made-in
 							]))))
 
 (defn setup-acme
@@ -108,6 +109,7 @@
   can use to wrap queries that you want to project some specific properties."
   [query]
   (-> query
+    (q/distinct* 'product)
     (q/project ['product :label :price])))
 
 ;For example:
@@ -118,6 +120,7 @@
   can use to wrap queries that you want to project some specific properties."
   [query]
   (-> query
+    (q/distinct* 'component)
     (q/project ['component :label :cost])))
 
 ;For example:
@@ -164,16 +167,17 @@
 ; or with the label and price
 ;  (acme (with-component-info (profitable-components 3 100)))
 
-(defn with-components-from
+(defn products-with-components-from
   "The where expression can pertain to multiple binding points in the query
   as well.  For example, this function will return all products that
   have components which were made in the specified location."
   [loc]
-  (-> (q/path [location [(components) :made-in]])
+  (->
+    (q/path [location [(components) :made-in]])
     (q/where (= loc (:label 'location)))
-    (q/project 'product)))
+    (q/distinct* 'product)))
 
-; (acme (with-component-info (with-components-from :zurich-office)))
+; (acme (with-product-info (products-with-components-from :zurich-office)))
 
 ; order-by
 ; - asc
@@ -196,7 +200,7 @@
 
 ; limit
 ; - need offset?
-(defn cheapest-component
+(defn cheapest-component-limit
   []
   (-> (components-by-cost)
     (q/limit 1)))
@@ -209,16 +213,17 @@
   (-> (components)
     (q/choose n)))
 
-;(dotimes [i 5]
-;  (acme (with-component-info (n-random-components 2))))
+;  (acme (with-component-info (n-random-components 2)))
 
-; TODO: fix-me
+; TODO: Need to determine what some reasonable semantics would be for group-by
+; in a path query...
 ; group-by
-(defn components-by-location
-  [loc]
-  (-> (with-components-from loc)
-    (q/group-by* 'location :label)
-    (with-component-info)))
+(comment defn components-by-location
+  []
+  (-> (q/path [location [(components) :made-in]])
+    (q/project ['location [:label :as :location]] ['component :label :cost])))
+
+;    (q/group-by* 'location :label)))
 
 ; count
 (defn num-products
@@ -226,26 +231,33 @@
   (-> (products)
     (q/count*)))
 
+;(acme (num-products))
+
 (defn num-products-with-components-from
   [loc]
-  (q/count* (q/distinct* (with-components-from loc)
-                     'component)))
+  (q/count* (products-with-components-from loc)))
+
+;(acme (num-products-with-components-from :zurich-office))
 
 ; average
 (defn average-product-price
   []
-  (-> products
-    (avg 'product :price)))
+  (-> (products)
+    (q/avg 'product :price)))
+
+;(acme (average-product-price))
 
 ; min/max
 (defn cheapest-component
   []
-  (-> components
-    (min 'component :price)))
+  (-> (components)
+    (q/min* 'component :cost)))
+
+;(acme (with-component-info (cheapest-component)))
 
 (defn most-expensive-component
   []
-  (-> components
-    (min 'component :price)))
+  (-> (components)
+    (q/max* 'component :cost)))
 
-; distinct?
+;(acme (with-component-info (most-expensive-component)))
