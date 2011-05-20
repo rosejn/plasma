@@ -25,10 +25,11 @@
                 comp-3        {:label :component-3 :cost 75.00}
                 comp-4        {:label :component-4 :cost 120.00}
                 ])
-      (edges [ROOT-ID       employees     :employees
-              employees     alice         :person
-              employees     bob           :person
-              employees     maria         :person
+      (edges [
+;              ROOT-ID       employees     :employees
+;              employees     alice         :person
+;              employees     bob           :person
+;              employees     maria         :person
               ROOT-ID       lugano        :location
               ROOT-ID       geneva        :location
               ROOT-ID       zurich        :location

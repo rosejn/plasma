@@ -180,13 +180,14 @@
              (format "Trying to project with invalid arguments.  Project requires either a path binding variable (symbol) or a vector containing a binding var and one or more keyword properties to project on.  (e.g. (project person ['article :author :title]))  Instead got: %s with bad arg: %s of type: %s" args arg (type arg)))))
   (let [projections (map #(if (symbol? %) [%] %) args)
         _ (log/to :query "[project] projections:" (seq projections))
-        plan (reduce
-               (fn [plan [bind-sym & properties]]
-                 (if-not (empty? properties)
-                   (let [props (map #(if (vector? %) (first %) %) properties)]
-                     (load-props plan bind-sym props))
-                   plan))
-               plan projections)
+        plan (doall 
+               (reduce
+                 (fn [plan [bind-sym & properties]]
+                   (if-not (empty? properties)
+                     (let [props (doall (map #(if (vector? %) (first %) %) properties))]
+                       (load-props plan bind-sym props))
+                     plan))
+                 plan projections))
         root-op (:root plan)
         projections (doall
                       (map (fn [[bind-sym & props]]
@@ -194,10 +195,11 @@
                                (when (nil? project-key)
                                  (throw (Exception. (format "Error trying to project using an invalid path binding: %s" bind-sym))))
                                (let [props (or props [:id])
-                                     props (map #(if (vector? %)
+                                     props (doall
+                                             (map #(if (vector? %)
                                                    [(first %) (nth % 2)]
                                                    [% %])
-                                                props)]
+                                                props))]
                                  (concat [project-key] props))))
                            projections))
         proj-op (plan-op :project

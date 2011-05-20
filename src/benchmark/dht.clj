@@ -1,5 +1,5 @@
 (ns benchmark.dht
-  (:use [plasma util graph api]
+  (:use [plasma util graph api viz]
         [plasma.net url connection peer bootstrap route]
         [clojure test stacktrace]
         test-utils)
@@ -10,17 +10,19 @@
   [p n-bits]
   (let [net (:id (first (query p (q/path [:net]))))]
     (with-peer-graph p
-      (dotimes [i n-bits]
-        (make-edge net (make-node {:bit i}) :bucket)))))
+      (let [kad (make-node)]
+        (make-edge ROOT-ID kad :kad)
+        (dotimes [i n-bits]
+          (make-edge kad (make-node {:bit i}) :bucket))))))
 
 (defn peer-buckets
   [p]
-  (query p (-> (q/path [b [:net :bucket]])
+  (query p (-> (q/path [b [:kad :bucket]])
              (q/project ['b :id :bit]))))
 
 (defn k-peers
   [p]
-  (query p (-> (q/path [b [:net :bucket]
+  (query p (-> (q/path [b [:kad :bucket]
                         p [b :peer]])
              (q/project ['b :bit] ['p :id :proxy]))))
 
@@ -40,7 +42,7 @@
 
 (defn bucket-n
   [p n]
-  (first (query p (-> (q/path [b [:net :bucket]])
+  (first (query p (-> (q/path [b [:kad :bucket]])
                     (q/where (= (:bit 'b) n))))))
 
 (defn add-to-bucket
@@ -55,7 +57,9 @@
         tgt-id (rand-bucket-id pid n n-bits)
         result-node (dht-lookup p tgt-id n-bits)
         result-bucket (k-bucket pid (:id result-node) n-bits)]
-    (add-to-bucket p result-bucket result-node)))
+    (when-not (or (= pid (:id result-node))
+                  (get-node p (:id result-node)))
+      (add-to-bucket p result-bucket result-node))))
 
 (defn fill-buckets
   [p n-bits]
@@ -68,10 +72,9 @@
     (doseq [p peers]
       (add-kademlia-route-table p n-bit-addrs))
     (Thread/sleep start-delay)
-    (try
-      (doseq [p peers]
-        (peers-to-k-buckets p n-bit-addrs))
-      [strapper peers])))
+    (doseq [p peers]
+      (peers-to-k-buckets p n-bit-addrs))
+    [strapper peers]))
 
 (comment
       (dotimes [i n-searches]
@@ -89,13 +92,32 @@
   []
   (dht-benchmark 20 8 2000 5))
 
-#_(let [[st pe] (dht)]
+(defn lookup-sample
+  [peers n-samples n-bits]
+  (let [samples (map
+                  (fn [_]
+                    (let [tgt-id (:id (get-node (rand-nth peers) ROOT-ID))
+                          src (rand-nth peers)
+                          res-id (:id (dht-lookup src tgt-id n-bits))]
+                      (= res-id tgt-id)))
+                  (range n-samples))
+        freqs (frequencies samples)]
+    (get freqs true)))
+
+(let [[st pe] (dht)]
   (def strap st)
   (def peers pe)
   (def p1 (first peers))
   (def p2 (second peers)))
 
+(defn close-all
+  []
+  (close strap)
+  (close-peers peers))
+
 (defn dhtr
   []
   (let [runner (bound-fn [] (dht))]
     (future (runner))))
+
+

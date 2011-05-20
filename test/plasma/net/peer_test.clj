@@ -52,7 +52,7 @@
         manager (:manager local)]
     (try
       (reset-peer local)
-      (let [{:keys [foo bar]} (construct local
+      (let [{:keys [foo bar] :as res} (construct local
                                          (-> (nodes
                                                [foo {:name "foo"}
                                                 bar {:name "bar"}])

@@ -86,7 +86,7 @@
   (let [tree (traverse-base)
         {:keys [p1 r1 t3]} tree
         agg  (aggregate-op (uuid) r1)
-        proj (project-op (uuid) agg [[(:id t3) :id]])
+        proj (project-op (uuid) agg [[(:id t3) [:id :id]]])
         tree (assoc tree
               :agg agg
               :proj proj)]
@@ -102,10 +102,10 @@
         {:keys [p1 j3 t3]} tree
         pl (property-op (uuid) j3 (:id t3) [:score :label])
         s-desc (sort-op (uuid) pl (:id t3) :score :desc)
-        proj-desc (project-op (uuid) s-desc [[(:id t3) :label]])
+        proj-desc (project-op (uuid) s-desc [[(:id t3) [:label :label]]])
         tree-desc (assoc tree :proj proj-desc)
         s-asc (sort-op (uuid) pl (:id t3) :score :asc)
-        proj-asc (project-op (uuid) s-asc [[(:id t3) :label]])
+        proj-asc (project-op (uuid) s-asc [[(:id t3) [:label :label]]])
         tree-asc (assoc tree :proj proj-asc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -120,7 +120,7 @@
         load-score (property-op (uuid) j3 (:id t3) [:score])
         min-desc (min-op (uuid) load-score (:id t3) :score)
         prop-op (property-op (uuid) min-desc (:id t3) [:label])
-        proj-desc (project-op (uuid) prop-op [[(:id t3) :label]])
+        proj-desc (project-op (uuid) prop-op [[(:id t3) [:label :label]]])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -133,7 +133,7 @@
         load-score (property-op (uuid) j3 (:id t3) [:score])
         max-desc (max-op (uuid) load-score (:id t3) :score)
         prop-op (property-op (uuid) max-desc (:id t3) [:label])
-        proj-desc (project-op (uuid) prop-op [[(:id t3) :label]])
+        proj-desc (project-op (uuid) prop-op [[(:id t3) [:label :label]]])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -176,7 +176,7 @@
   (let [tree (traverse-base)
         {:keys [p1 j3 t3]} tree
         choose-desc (choose-op (uuid) j3 2)
-        proj-desc (project-op (uuid) choose-desc [[(:id t3) :label]])
+        proj-desc (project-op (uuid) choose-desc [[(:id t3) [:label :label]]])
         tree-desc (assoc tree :proj proj-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
@@ -231,7 +231,7 @@
   (limit-op-test)
   (choose-op-test)
 ;  (send-receive-op-test)
-) 
+)
 
 (deftest test-all
   (test-fixture ops-test))

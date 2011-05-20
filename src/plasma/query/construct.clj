@@ -74,11 +74,17 @@
         (make-edge src tgt props))))
   node-map)
 
+(defn- keywordify-keys
+  [spec]
+  (apply hash-map (interleave (map keyword (keys spec))
+                              (vals spec))))
+
 (defn construct*
   [spec]
   (when-not jiraph/*graph*
     (throw (Exception. "Cannot run a construct without binding a graph.")))
   (->> spec
     (make-nodes)
-    (make-edges spec)))
+    (make-edges spec)
+    (keywordify-keys)))
 

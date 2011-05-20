@@ -89,9 +89,11 @@
   {:id <peer-id> :proxy <peer-url>}
   "
   [p n tgt-id n-bits]
-  (let [peers (query p (-> (q/path [p [:net :bucket :peer]])
+  (let [peers (query p (-> (q/path [p [:kad :bucket :peer]])
                          (q/project ['p :id :proxy])))]
-    (take n (sort-by #(kademlia-distance tgt-id (:id %) n-bits) peers))))
+    (if-not (nil? (first peers))
+      (take n (sort-by #(kademlia-distance tgt-id (:id %) n-bits) peers))
+      [])))
 
 (def ALPHA 3)
 
@@ -100,17 +102,13 @@
   (let [root {:id (peer-id p)}]
     (loop [peers [p]
            closest root]
-      (println "[dht-lookup] cur: " (k-bucket (:id closest) tgt-id n-bits))
       (let [closest-dist (kademlia-distance tgt-id (:id closest) n-bits)
-            _ (println "dist: " closest-dist)
-            _ (println "peers: " peers)
             cps (flatten (map #(closest-peers % ALPHA tgt-id n-bits) peers))
             cps (map #(assoc % :distance
                              (kademlia-distance tgt-id (:id %) n-bits))
                      cps)
             cps (filter #(< (:distance %) closest-dist) cps)
             sorted (sort-by :distance cps)]
-        (println "sorted: " sorted)
         (if (empty? sorted)
           (assoc closest :distance (kademlia-distance (:id root) (:id closest) n-bits))
           (recur (map (comp (partial peer-connection p) :proxy) sorted)
@@ -123,5 +121,4 @@
     guid + 2^0, 2^1, 2^2, 2^3, etc...
   "
   [p]
-
 )

@@ -20,9 +20,11 @@
 (defn- advertise-handler
   [p con event]
   (let [[root-id url] (:params event)]
-    (log/to :bootstrap "advertise-event:" url root-id)
+    (log/to :bootstrap "[advertise-handler] got advertisement:" url root-id)
     (when-not (have-peer? p url)
-            (add-peer p root-id url))))
+            (add-peer p root-id url)))
+  (log/to :bootstrap "[advertise-handler] bootstrap peer has:" 
+          (count (get-peers p)) "peers"))
 
 (defn- bootstrap-connect-handler
   [p con]
@@ -35,7 +37,10 @@
   ([] (bootstrap-peer {}))
   ([options]
    (let [p (peer options)]
+     (with-peer-graph p (clear-graph))
+     (setup-peer-graph p)
      (on-connect p (partial bootstrap-connect-handler p))
+     (log/to :bootstrap "[bootstrap-peer] has:" (count (get-peers p)) "peers")
      p)))
 
 (def N-BOOTSTRAP-PEERS 5)
@@ -84,5 +89,4 @@
 (defn bootstrap
   [p boot-url]
   (schedule 1 #(bootstrap* p boot-url)))
-
 

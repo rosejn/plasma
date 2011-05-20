@@ -18,7 +18,7 @@
                         factory widget :manufactures
                         factory manager :manager
                         root manager :manager]))]
-    (construct spec)
+    (construct* spec)
     (let [m1 (-> (q/path [f [:locations :factory]
                             m [f :manager]])
                (q/where (= "Jonestown" (:name 'f)))
