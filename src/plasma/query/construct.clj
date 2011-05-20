@@ -1,14 +1,10 @@
 (ns plasma.query.construct
   (:use [plasma util graph viz]
         [plasma.net url]
-        [plasma.query operator helpers expression]
-        [lamina core])
-  (:require [clojure (zip :as zip)]
-            [clojure (set :as set)]
-            [logjam.core :as log]
+        [plasma.query operator helpers])
+  (:require [logjam.core :as log]
             [jiraph.graph :as jiraph]
-            [plasma.query.core :as q])
-  (:import [java.util.concurrent TimeUnit TimeoutException]))
+            [plasma.query.core :as q]))
 
 (defmacro nodes
   "Convert a node-spec into a builder-query."

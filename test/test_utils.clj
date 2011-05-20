@@ -26,7 +26,7 @@
         [root     net      :net
          root     music    :music
          music    synths   :synths
-         synths   bass     :synth
+         synths   bass     {:label :synth :favorite true}
          synths   hat      :synth
          synths   kick     :synth
          synths   snare    :synth

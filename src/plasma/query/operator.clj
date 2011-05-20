@@ -197,11 +197,22 @@
   [pred]
   (cond
     (keyword? pred) #(= pred (:label %))
+
     (regexp? pred) #(re-find pred (let [lbl (:label %)]
                                     (if (keyword? lbl)
                                       (name lbl)
                                       lbl)))
     (fn? pred) pred
+
+    (map? pred) (fn [edge]
+                  (every? (fn [[k v]]
+                            (let [e-val (get edge k)]
+                              (cond
+                                (regexp? v) (re-find v e-val)
+                                (fn? v)     (v e-val)
+                                :default (= v e-val))))
+                          pred))
+
     :default
     (throw (Exception. (str "Unsupported predicate type: " (type pred))))))
 

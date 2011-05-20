@@ -12,6 +12,9 @@ functions when bad arguments are passed
 - update node/edge
 - delete node/edge
 
+* extend expressions to work on edge property predicates
+ - path macro needs to do similar rebinding as the where macro
+
 -----------
 
 * recursive queries

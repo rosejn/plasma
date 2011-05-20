@@ -26,9 +26,11 @@
   (let [res (query (path [:music :synths :synth]))
         res2 (query (path [ROOT-ID :music :synths :synth]))
         synths (:id (first (query (path [:music :synths]))))
-        res3 (query (path [synths :synth]))]
+        res3 (query (path [synths :synth]))
+        res4 (query (path [ROOT-ID :music :synths {:label :synth :favorite true}]))]
     (is (apply = #{:kick :bass :snare :hat}
-               (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))))
+               (map #(set (map (comp :label find-node :id) %)) [res res2 res3])))
+    (is (= :bass (first (map (comp :label find-node :id) res4))))))
 
 (deftest nested-path-test
   (let [q1 (path [:music :synths])

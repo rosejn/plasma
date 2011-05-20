@@ -11,14 +11,7 @@
 (def MAX-QUERY-TIME (* 3 1000)) ; in ms
 (def PROMISE-WAIT-TIME 100)
 
-;  (:use [plasma util graph]
-;        [plasma.net url]
-;        [plasma.query plan operator helpers expression]
-;        [jiraph graph]
-;        [lamina core])
-;  (:import [java.util.concurrent TimeUnit TimeoutException]))
-
-;(log/channel :query :debug)
+(log/channel :query :debug)
 (log/channel :optimize :query)
 (log/channel :build :query)
 
@@ -204,7 +197,38 @@
       (with-receive-op)
       (with-param-map))))
 
-(defmacro path [& q]
+(defmacro path
+  "Create a path query, which is composed of a set of edge
+  traversal specifications.
+
+  ; Return the set of paths traversing from the root across two 
+  ; edges, :foo and :bar.
+  (path [:foo :bar])
+
+  ; Bind the node on the target side of the edge(s) labeled :bar to the
+  ; path variable b, so it can be referred to later in the query.
+  (path [b [:foo :bar]])
+
+  ; Also bind the intermediate node reached by the edge :foo
+  (path [f [:foo]
+        [b [f :bar]])
+
+  ; By default the edge values you specify will be compared with the :label
+  ; property for the associated edge.  You can also use regular expressions,
+  ; which will match against (name (:label edge)) if the label is a keyword,
+  ; or else as normal if it is a string.
+  (path [b [:foo #\"ba[rz]\"]])
+
+  ; Use a map if you need to test on multiple edge properties
+  (path [b [{:label :foo :favorite true} :bar]])
+
+  ; Path queries can also be composed, so that one query can continue from
+  ; a previous one:
+  (let [bar-query (path [b [:foo :bar]])]
+    (path [z [bar-query :zap]]))
+
+  "
+  [& q]
   (let [[bindings body]
         (cond
           (and (vector? (first q))  ; [:a :b :c] or [node-uuid :b :c]
