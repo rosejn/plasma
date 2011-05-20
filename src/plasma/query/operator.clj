@@ -35,18 +35,6 @@
                    (log/format :flow "[%s - %s] %s" op id (trim-pt pt))))
     (on-closed chan #(log/format :close "[%s - %s] closed" op id))))
 
-(defn plan-op
-  "Creates a query plan operator node.  Takes an operator type, dependent
-  operator ids, and the operator parameters."
-  [op & {:keys [deps args]}]
-  (when-not (every? uuid? deps)
-          (throw (Exception. (str "Invalid operator dependency (must be UUID)."
-                                  op " deps: " deps))))
-  {:type op
-   :id (uuid)
-   :deps (vec deps)
-   :args (vec args)})
-
 (defn operator-deps-zip [plan start-id end-id]
   (let [ops (:ops plan)]
     (zip/zipper

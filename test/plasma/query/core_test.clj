@@ -1,7 +1,7 @@
 (ns plasma.query.core-test
   (:use [plasma util graph viz]
         [plasma.net url]
-        [plasma.query core operator]
+        [plasma.query core operator exec]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
@@ -11,6 +11,8 @@
 
 (def TIMEOUT 200)
 
+(use-fixtures :each test-fixture)
+
 (deftest path-test-manual
   (let [plan (path [:music :synths :synth])
         plan (with-result-project plan)
@@ -18,7 +20,7 @@
     (run-query tree {})
     (is (= #{:kick :bass :snare :hat}
            (set (map (comp :label find-node :id)
-                     (query-results tree)))))))
+                     (query-tree-results tree)))))))
 
 (deftest path-query-test
   (let [res (query (path [:music :synths :synth]))
@@ -63,8 +65,8 @@
   (let [p (-> (path [sesh [:sessions :session]
                      synth [sesh :synth]])
             (where (= (:label 'synth) :kick)))]
-    (is (false? (has-projection? p)))
-    (is (true? (has-projection? (project p ['sesh :label]))))))
+    (is (false? (#'plasma.query.core/has-projection? p)))
+    (is (true? (#'plasma.query.core/has-projection? (project p ['sesh :label]))))))
 
 (deftest project-test
   (let [q (-> (path [synth [:music :synths :synth]])
@@ -108,24 +110,7 @@
     (is (= 4 (count r1) (count r2)))
     (is (= r1 (reverse r2)))))
 
-(deftest optimizer-test
-  (let [plan (-> (path [sesh [:sessions :session]
-                        synth [sesh :synth]])
-               (where (= (:label 'synth) :kick))
-               (project ['sesh :label]))
-        tree (query-tree plan TIMEOUT)
-        optimized (optimize-plan plan)
-        opt-tree (query-tree optimized TIMEOUT)]
-    ;(print-query plan)
-    ;(print-query optimized)
-    (run-query tree {})
-    (run-query opt-tree {})
-    (is (= (doall (query-results tree))
-           (doall (query-results opt-tree))))))
-
 (comment deftest recurse-test
   (recurse (path [:net :peer])
            :count 10))
-
-(use-fixtures :each test-fixture)
 

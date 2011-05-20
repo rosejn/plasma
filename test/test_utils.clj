@@ -49,6 +49,12 @@
                     (test-graph)
                     (f))))
 
+(defn query-tree-results
+  [tree & [timeout]]
+  (let [chan (get-in (:ops tree) [(:root tree) :out])
+        timeout (or timeout 1000)]
+    (lamina/lazy-channel-seq chan timeout)))
+
 (defn make-peers
   "Create n peers, each with a monotically increasing port number.
   Then run (fun i) with the peer graph bound to initialize each peer,
