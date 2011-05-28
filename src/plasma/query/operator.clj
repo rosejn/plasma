@@ -258,7 +258,7 @@
                         pts (map #(assoc pt id %) tgts)]
                     (log/format :flow "[traverse] %s - %s -> [%s]"
                                 src-id edge-predicate
-                                (apply str (interpose " " (map trim-id tgts))))
+                                (apply str (interpose " " (map identity tgts))))
                     (apply enqueue out pts)))))))
         (if (drained? in) (close out))))
 

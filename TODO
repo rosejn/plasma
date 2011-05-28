@@ -1,5 +1,12 @@
+* extend Peer to support the graph API directly without with-peer-graph
+* start using transactions
+
+* add a function to peer that returns its url
+
 * Add a (graph-event-channel [g]) which will publish an event any time the graph
 is modified.
+
+* Add a sum operator and query form
 
 * figure out an error handling policy and right some helpers to
  - make it quick and easy to throw exceptions from query-plan builder

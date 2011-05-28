@@ -12,9 +12,9 @@
   (clear-graph)
   (construct*
     (-> (nodes [employees     :employees
-                alice         {:label :alice :gender :female}
-                bob           {:label :bob   :gender :male}
-                maria         {:label :maria :gender :female}
+                alice         {:name :alice :gender :female}
+                bob           {:name :bob   :gender :male}
+                maria         {:name :maria :gender :female}
                 lugano        :lugano-office
                 geneva        :geneva-office
                 zurich        :zurich-office
@@ -127,6 +127,12 @@
 ;For example:
 ;  (acme (with-component-info (components)))
 
+(defn with-manager-info
+  [query]
+  (-> query
+    (q/distinct* 'manager)
+    (q/project ['manager :name :gender])))
+
 ; Could we do something like this?
 (comment def product-component-prices
   (-> components
@@ -198,6 +204,11 @@
     (q/order-by 'product :price :desc)))
 
 ;(acme (with-product-info (products-by-price)))
+
+(defn most-expensive-product
+  []
+  (-> (products-by-price)
+    (q/limit 1)))
 
 ; limit
 ; - need offset?

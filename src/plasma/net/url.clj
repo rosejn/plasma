@@ -18,3 +18,9 @@
      :host host
      :port (Integer. port)}))
 
+(defn assert-url
+  [url]
+  (when-not (and (string? url)
+                 (.startsWith url "plasma://"))
+    (throw (Exception.
+             (str "Trying to open a peer connection with an invalid URL: " url)))))

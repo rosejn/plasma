@@ -35,13 +35,27 @@
       (number? id) id)
     (expt 2 n-bits)))
 
-(defn chord-distance [a b n-bits]
+(defn ring-distance
+  "Compute the distance between points a and b on a ring (finite group)
+  where values go from zero to 2^n-bits.  Note that this distance is
+  only computed in the clockwise (positive) direction."
+  [n-bits a b]
   (let [a (id-bits a n-bits)
         b (id-bits b n-bits)
         max-n (expt 2 n-bits)]
     (mod (+ (- b a)
             max-n)
          max-n)))
+
+(defn ring-abs-distance
+  "Compute the natural distance between two points a and b in either direction
+  on a ring where values go from zero to 2^n-bits."
+  [n-bits a b]
+  (let [a (id-bits a n-bits)
+        b (id-bits b n-bits)
+        max-n (expt 2 n-bits)
+        dist (Math/abs (- a b))]
+    (min dist (- max-n dist))))
 
 (defn kademlia-distance
   "Compute the kademlia distance between two peer-ids hashed into

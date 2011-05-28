@@ -17,6 +17,9 @@
 
 ; TODO: Convert to implementing clojure.contrib.generic methods
 
+(def-unary-op rand)
+(def-unary-op rand-int)
+
 (def-unary-op not)
 (def-unary-op inc)
 (def-unary-op dec)

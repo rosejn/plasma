@@ -55,7 +55,7 @@
 (defn- dot-node
   [id options]
   (let [n (find-node id)
-        d-id (trim-id id)
+        d-id (if (uuid? id) (trim-id id) id)
         node-props (:node-props options)
         lbl (if node-props
               (dot-record-label (dissoc n :edges) options)

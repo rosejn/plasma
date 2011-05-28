@@ -317,10 +317,12 @@
        (setup-peer-presence p))
      p)))
 
+; TODO: Make this URL checking generic, maybe hooking into some Java URL class? (Ugh...)
 (defn peer-connection
   "Returns a connection to a remote peer reachable by url, using the local peer p's
   connection manager."
   [p url]
+  (assert-url url)
   (get-connection (:manager p) url))
 
 (defn peer-get-node
