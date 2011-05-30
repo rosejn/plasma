@@ -74,13 +74,15 @@
           (fn [con]
             (lamina/receive-all (event-channel con)
               (fn [event]
-                (swap! events conj event)))))
+                (when event
+                  (swap! events conj (first (:params event))))))))
         (let [client (get-connection manager (url proto "localhost" port))]
           (dotimes [i 20]
-            (send-event client 'foo [:a :b :c]))
+            (send-event client 'foo [i :a :b :c]))
           (close client))
         (Thread/sleep 100)
-        (is (= 20 (count @events))))
+        (println "events: " @events (nil? (last @events)))
+        (is (= @events (range 20))))
       (finally
         (close listener)
         (clear-connections manager)))))
@@ -121,3 +123,24 @@
 (deftest connection-stream-test
   (stream-test "plasma" 1234)
   (stream-test "uplasma" 1234))
+
+;(use 'aleph.object)
+;(use 'lamina.core)
+;(def log (atom []))
+;(def s (start-object-server
+;         (fn [ch _] (receive-all ch #(swap! log conj %)))
+;         {:port 1234}))
+;
+;(def c (wait-for-result (object-client {:host "localhost"
+;                                               :port 1234})))
+;(enqueue c "testing")
+;@log
+;
+;(defn bad-stuff
+;  []
+;  (def c (wait-for-result (object-client {:host "localhost"
+;                                          :port 1234})))
+;  (enqueue c "testing")
+;  (close c))
+;
+;(dotimes [i 100] (bad-stuff))
