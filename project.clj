@@ -1,10 +1,12 @@
 (defproject plasma "0.1.1-SNAPSHOT"
   :description "Distributed graph computing."
+;  :repositories {"clojure-releases" "http://build.clojure.org/releases"}
   :dependencies [[org.clojure/clojure "1.2.0"]
+;                 [org.clojure/clojure "1.3.0-alpha8"]
                  [org.clojure/clojure-contrib "1.2.0"]
                  [aleph "0.2.0-alpha1"]
                  [jiraph "0.6.1-SNAPSHOT"]
-;                 [clojure-protobuf "0.2.4"]
+                 [clojure-protobuf "0.3.4"]
                  [org.clojars.overtone/vijual "0.2.1"]
                  [logjam "0.1.0-SNAPSHOT"]
                  [ring/ring-core "0.3.1"]
@@ -26,9 +28,13 @@
 
 (deftask clean
   "Remove log files and test databases."
-  (doseq [f (ls-files "./" "log")]
-    (println f)
-    (delete-file f))
-  (doseq [f (ls-files "db")]
-    (println delete-file f)
-    (delete-file f)))
+  (try
+    (doseq [f (ls-files "./" "log")]
+      (println f)
+      (delete-file f))
+    (doseq [f (ls-files "db")]
+      (println delete-file f)
+      (delete-file f))
+    (catch Exception e
+      (println "Error running Plasma clean task...")
+      (.printStackTrace e))))

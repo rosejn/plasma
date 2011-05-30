@@ -209,20 +209,25 @@
 
 (defn- request-handler
   [peer [ch req]]
-  (log/format :peer "request-handler[%s]: %s" (:id req) (:method req))
-  (try
-    (let [res (rpc-handler peer req)
-          res (if (seq? res)
-                (doall res)
-                res)
-          rpc-res (rpc-response req res)]
-      (lamina/enqueue ch rpc-res))
-    (catch Exception e
-      (log/to :peer "error handling request!\n------------------\n"
-              (with-out-str (print-cause-trace e)))
-      (.printStackTrace e)
-      (lamina/enqueue ch
-        (rpc-error req "Exception occured while handling request." e)))))
+  (when req
+    (log/format :peer "request-handler[%s]: %s" (:id req) (:method req))
+    (try
+      (let [res (rpc-handler peer req)
+            res (if (seq? res)
+                  (doall res)
+                  res)
+            rpc-res (rpc-response req res)]
+        (lamina/enqueue ch rpc-res))
+      (catch java.lang.IllegalArgumentException e
+          (lamina/enqueue
+            ch
+            (rpc-error req (format "No handler found for method: %s" (:method req)) e)))
+      (catch Exception e
+        (log/to :peer "error handling request!\n------------------\n"
+                (with-out-str (print-cause-trace e)))
+        (.printStackTrace e)
+        (lamina/enqueue ch
+                        (rpc-error req "Exception occured while handling request." e))))))
 
 (defmulti stream-handler
   "A general purpose stream multimethod."
@@ -262,13 +267,14 @@
 
 (defn- stream-request-handler
   [peer [ch req]]
-  (log/to :peer "stream-request: " (:id req))
-  (try
-    (stream-handler peer ch req)
-    (catch Exception e
-      (log/to :peer "error handling stream request!\n"
-              "-------------------------------\n"
-              (with-out-str (print-cause-trace e))))))
+  (when req
+    (log/to :peer "stream-request: " (:id req))
+    (try
+      (stream-handler peer ch req)
+      (catch Exception e
+        (log/to :peer "error handling stream request!\n"
+                "-------------------------------\n"
+                (with-out-str (print-cause-trace e)))))))
 
 (defn handle-peer-connection
   "Hook a connection up to a peer so that it can receive queries."
@@ -326,19 +332,13 @@
   (get-connection (:manager p) url))
 
 (defn peer-get-node
-  "Lookup a node by ID on a remote peer."
+  "Lookup a node by ID on a remote peer, returns a result-channel."
   [con id]
-  (let [res (lamina/constant-channel)]
-    (lamina/receive (request con 'get-node [id])
-                    #(lamina/enqueue res (:result %)))
-    res))
+  (request con 'get-node [id]))
 
 (defn peer-construct
   [con spec]
-  (let [res (lamina/constant-channel)]
-    (lamina/receive (request con 'construct [spec])
-                    #(lamina/enqueue res (:result %)))
-    res))
+  (request con 'construct [spec]))
 
 (defn peer-query-channel
   ([con q]

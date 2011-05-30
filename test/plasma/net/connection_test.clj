@@ -52,8 +52,8 @@
       (let [client (get-connection manager (url proto "localhost" port))]
         (dotimes [i 20]
           (let [res-chan (request client 'foo [i])
-                res (lamina/wait-for-message res-chan 100)]
-            (is (= (* 2 i) (:result res)))))
+                res (lamina/wait-for-result res-chan 100)]
+            (is (= (* 2 i) res))))
         (is (zero? (count (:chan client))))
         (close client))
       (finally
@@ -81,7 +81,6 @@
             (send-event client 'foo [i :a :b :c]))
           (close client))
         (Thread/sleep 100)
-        (println "events: " @events (nil? (last @events)))
         (is (= @events (range 20))))
       (finally
         (close listener)

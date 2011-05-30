@@ -56,7 +56,7 @@
 
 (defn wait-for
   [chan timeout]
-  (lamina/wait-for-message chan timeout))
+  (lamina/wait-for-result chan timeout))
 
 (defn channel-timeout
   "Closes the channel after timeout."

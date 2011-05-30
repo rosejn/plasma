@@ -61,7 +61,7 @@
 (defn acme
   "Define a helper function to query our acme graph."
   [q]
-  (graph-apply acme-graph #(query q)))
+  (graph-apply acme-graph #(q/query q)))
 
 ; basic path selection
 ;  - no binding

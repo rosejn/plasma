@@ -18,14 +18,20 @@
                    (= type (:type msg))))
     chan))
 
-(defn- response-channel
-  "Returns a channel that will receive a single response for the request id."
+(defn- matched-response-channel
+  "Returns a result-channel that will receive a single response matching
+  the request id."
   [chan id]
-  (let [res-chan (lamina/channel)
-        res (lamina/take* 1 (lamina/filter* #(= id (:id %))
+  (let [res (lamina/result-channel)
+        response-chan (lamina/take* 1 (lamina/filter* #(= id (:id %))
                              (type-channel chan :response)))]
-    (lamina/siphon res res-chan)
-    res-chan))
+    (lamina/run-pipeline
+      response-chan
+      lamina/read-channel
+      (fn [msg]
+        (if (:error msg)
+          (throw (Exception. (:message (:error msg))))
+          (:result msg))))))
 
 (defn- wrapped-stream-channel
   "Given a channel and a stream-id, returns one side of a channel pair
@@ -71,7 +77,7 @@
   (request
     [this method params]
     (let [id (uuid)
-          res (response-channel chan id)]
+          res (matched-response-channel chan id)]
       (lamina/enqueue chan (rpc-request id method params))
       res))
 

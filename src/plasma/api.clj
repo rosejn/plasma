@@ -56,8 +56,8 @@
 (defprotocol IConnection
   (request
     [con method params]
-    "Send a request over this connection. Returns a channel
-    that will receive the single result message.")
+    "Send a request over this connection. Returns a result-channel
+    that will receive a single result message, or an error.")
 
   (request-channel
     [con]
