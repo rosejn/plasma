@@ -1,4 +1,4 @@
-(defproject plasma "0.1.1-SNAPSHOT"
+(defproject plasma "0.2.0-SNAPSHOT"
   :description "Distributed graph computing."
 ;  :repositories {"clojure-releases" "http://build.clojure.org/releases"}
   :dependencies [[org.clojure/clojure "1.2.0"]
