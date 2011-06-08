@@ -1,4 +1,5 @@
 * extend Peer to support the graph API directly without with-peer-graph
+
 * start using transactions
 
 * add a function to peer that returns its url

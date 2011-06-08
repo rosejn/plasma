@@ -205,7 +205,6 @@
 (defmethod rpc-handler 'query
   [peer req]
   (apply query peer (:params req)))
-;  (query peer (first (:params req))))
 
 (defn- request-handler
   [peer [ch req]]
@@ -218,16 +217,17 @@
                   res)
             rpc-res (rpc-response req res)]
         (lamina/enqueue ch rpc-res))
-      (catch java.lang.IllegalArgumentException e
+      #_(catch java.lang.IllegalArgumentException e
           (lamina/enqueue
             ch
-            (rpc-error req (format "No handler found for method: %s" (:method req)) e)))
+            (rpc-error req (format "No handler found for method: %s\n\n%s" (:method req)
+                                   (with-out-str (.printStackTrace e))) e)))
       (catch Exception e
         (log/to :peer "error handling request!\n------------------\n"
                 (with-out-str (print-cause-trace e)))
         (.printStackTrace e)
         (lamina/enqueue ch
-                        (rpc-error req "Exception occured while handling request." e))))))
+          (rpc-error req (str "Exception occured while handling request:\n" (with-out-str (.printStackTrace e))) e))))))
 
 (defmulti stream-handler
   "A general purpose stream multimethod."

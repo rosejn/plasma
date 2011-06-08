@@ -80,23 +80,32 @@
   (let [dist (ring-abs-distance ADDR-BITS (peer-id p) (:id props))
         ts   (current-time)
         props (assoc props :timestamp ts :distance dist)]
-    (construct p
-      (-> (nodes [kps (q/path [:net :kps])
-                  new-peer props])
-        (edges [kps new-peer :peer])))))
+    (if (get-node p (:id props))
+      (do
+        (log/to :d2 "exists... adding edge")
+        (with-peer-graph
+          p
+          (apply assoc-node (:id props) (flatten (seq (dissoc props :id))))
+          (make-edge (:id (first (q/path [:net :kps]))) (:id props) :peer)))
+      (do
+        (log/to :d2 "construct...")
+        (construct p
+                   (-> (nodes [kps (q/path [:net :kps])
+                               new-peer props])
+                     (edges [kps new-peer :peer])))))))
 
 (defn add-kps-peers
   [p peers]
+  (log/to :d2 "[add-kps-peers] " (count peers))
   (doseq [new-peer peers]
     (add-kps-peer p new-peer)))
 
 (defn oldest-kps-peer
   "Select the least-fresh peer."
-  [p]
-  (first (query p (with-peer-info
-             (-> (kps-peers)
-               (q/order-by 'p :timestamp :asc)
-               (q/limit 1))))))
+  []
+  (-> (kps-peers)
+    (q/order-by 'p :timestamp :asc)
+    (q/limit 1)))
 
 (defn- take-sample
   [n rt]
@@ -124,7 +133,7 @@
 
 (defn remove-peers
   [p ptype peers]
-  (let [type-id (:id (query p (q/path [:net ptype])))]
+  (let [type-id (:id (first (query p (q/path [:net ptype]))))]
     (with-peer-graph p
       (doseq [p-id (map :id peers)]
         (remove-edge type-id p-id)))))
@@ -133,36 +142,56 @@
   [p]
   (let [peers (query p (with-peer-info (kps-peers)))
         keepers (harmonic-close-peers peers (- KPS-PEERS KPS-ROUND-DROP))
-        to-exchange (filter #((set (map :id keepers)) (:id %)) peers)
-        to-exchange (conj to-exchange {:id (peer-id p) :proxy (:url p)})]
-    (remove-peers p :kps to-exchange)
-    (log/to :d2 "exchanging: " (vec (map (comp trim-id :id) to-exchange)))
+        keeper-set (set (map :id keepers))
+        to-exchange (filter #(not (keeper-set (:id %))) peers)
+        to-exchange (map #(select-keys % [:id :proxy]) to-exchange)]
+    (log/format :d2 "[%s] exchanging: %s"
+                (trim-id (peer-id p))
+                (vec (map (comp trim-id :id) to-exchange)))
     to-exchange))
 
 (defn update-timestamp
   [p id]
   (with-peer-graph p (assoc-node id :timestamp (current-time))))
 
+(defn kps-purge
+  [p exchanged]
+  (let [num-peers (first (query p (q/count* (kps-peers))))]
+    (when (> num-peers KPS-PEERS)
+      (remove-peers p :kps (take (- num-peers KPS-PEERS) exchanged)))))
+
+(defn conj-peer
+  [elems p]
+  (conj elems {:id (peer-id p) :proxy (:url p)}))
+
 (defn kps-gossip
   "Perform a single round of kps gossiping."
   [p]
-  (when-let [url (:proxy (oldest-kps-peer p))]
+  (when-let [{url :proxy id :id} (first (query p (with-peer-info (oldest-kps-peer))))]
     (log/to :d2 "gossip url: " url)
     (let [partner (peer-connection p url)
-          to-exchange (kps-exchange-peers p)]
-      (let [res-chan (request partner 'kps-exchange [to-exchange])]
-        (lamina/receive res-chan
+          to-exchange (kps-exchange-peers p)
+          sending (conj-peer to-exchange p)]
+      (log/to :d2 "sending: " sending)
+      (let [res-chan (request partner 'kps-exchange [sending])]
+        (lamina/on-success res-chan
           (fn [res]
             (log/to :d2 "response: " res)
-            (add-kps-peers p (:result res)))))
-      (update-timestamp p (:id partner)))))
+            (add-kps-peers p res)
+            (kps-purge p to-exchange)))
+        (lamina/on-error res-chan
+          (fn [e]
+            (log/to :d2 "ERROR: " e))))
+      (update-timestamp p id))))
 
 (defmethod rpc-handler 'kps-exchange
   [p req]
+  (log/to :d2 "inside handler..." req)
   (let [new-peers (first (:params req))
         to-exchange (kps-exchange-peers p)]
     (add-kps-peers p new-peers)
-    to-exchange))
+    (kps-purge p to-exchange)
+    (conj-peer to-exchange p)))
 
 (defn kps-on
   [p period]
@@ -233,7 +262,7 @@
         q-con (peer-connection p (:proxy q-peer))
         to-exchange (nps-exchange-peers p q-peer)
         res-chan (request q-con 'nps-exchange [to-exchange])]
-      (lamina/receive res-chan
+      (lamina/on-success res-chan
         #(add-nps-peers p %))
     (update-timestamp p (:id q-peer))))
 
@@ -270,7 +299,6 @@
   [a b]
   (add-kps-peer a {:id (peer-id b) :proxy (plasma-url "localhost" (:port b))}))
 
-
 (defn setup
   []
   (log/file :d2 "d2.log")
@@ -281,13 +309,18 @@
   (def p2 (nth peers 1))
   (doseq [p (drop 1 peers)] (addp p p1)))
 
+(defn reset
+  []
+  (doseq [p peers] (close p))
+  (setup))
+
 (defn gossip
   []
   (doseq [p peers] (kps-gossip p)))
 
 (defn pc
   []
-  (println "peer-counts: " (vec (map #(count (query % (all-peers))) peers))))
+  (println "peer-counts: " (vec (map #(first (query % (q/count* (all-peers)))) peers))))
 
 (defn ids
   []

@@ -56,7 +56,7 @@ input-params: %s"
                       [param-val])
           param-op (get-in tree [:ops param-id])]
         (apply lamina/enqueue-and-close (get param-op :in) param-val)))
-  (schedule (:timeout tree)
+  #_(schedule (:timeout tree)
     (fn []
       (doseq [op (:ops tree)]
         (try

@@ -46,7 +46,7 @@
 
 (defn public-url
   [port]
-  (plasma-url (:public (addr-info)) port))
+  (plasma-url (or (:public (addr-info)) "127.0.0.1") port))
 
 (defn set-port-forward
   ([port service]

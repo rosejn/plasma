@@ -163,8 +163,9 @@
         (on-drained chan #(do (log/to :flow "remote-channel drained")
                             (all-closed)))))
 
-    (siphon left-out out)
     (on-drained left-out all-closed)
+    (on-closed out #(doseq [sub @sub-chans] (close sub)))
+    (siphon left-out out)
     (flow-log "receive" id out)
 
   {:type :receive
@@ -184,10 +185,7 @@
     (siphon left-out out)
     (siphon out dest)
     (flow-log "send" id out)
-    (on-drained left-out
-      #(do
-         (log/to :close "[send] closed")
-         (close dest))))
+    (on-drained left-out #(close dest)))
   {:type :send
    :id id
    :dest dest})

@@ -127,7 +127,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
   "Create an edge from src to tgt with the associated properties.  At minimum
   there must be a :label property.
 
-    (make-edge alice bob :label :friend)
+    (make-edge alice bob {:label :friend})
   "
   [src tgt label-or-props]
   (let [src (if (= ROOT-ID src)

@@ -8,7 +8,7 @@
     [logjam.core :as log]
     [lamina.core :as lamina]))
 
-(def MAX-QUERY-TIME (* 3 1000)) ; in ms
+(def MAX-QUERY-TIME (* 2 1000)) ; in ms
 (def PROMISE-WAIT-TIME 100)
 
 (log/channel :query :debug)
@@ -201,7 +201,7 @@
   "Create a path query, which is composed of a set of edge
   traversal specifications.
 
-  ; Return the set of paths traversing from the root across two 
+  ; Return the set of paths traversing from the root across two
   ; edges, :foo and :bar.
   (path [:foo :bar])
 
