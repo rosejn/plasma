@@ -1,7 +1,5 @@
-(ns plasma.query.core-test
-  (:use [plasma util graph viz]
-        [plasma.net url]
-        [plasma.query core operator exec]
+(ns plasma.query-test
+  (:use [plasma util graph viz query operator exec]
         [clojure test stacktrace]
         [jiraph graph]
         lamina.core
@@ -67,8 +65,8 @@
   (let [p (-> (path [sesh [:sessions :session]
                      synth [sesh :synth]])
             (where (= (:label 'synth) :kick)))]
-    (is (false? (#'plasma.query.core/has-projection? p)))
-    (is (true? (#'plasma.query.core/has-projection? (project p ['sesh :label]))))))
+    (is (false? (#'plasma.query/has-projection? p)))
+    (is (true? (#'plasma.query/has-projection? (project p ['sesh :label]))))))
 
 (deftest project-test
   (let [q (-> (path [synth [:music :synths :synth]])

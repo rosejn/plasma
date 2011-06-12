@@ -1,10 +1,9 @@
-(ns plasma.query.construct-test
-  (:use [plasma util graph viz]
-        [plasma.query construct]
+(ns plasma.construct-test
+  (:use [plasma util graph viz construct]
         [clojure test stacktrace]
         test-utils)
   (:require [logjam.core :as log]
-            [plasma.query.core :as q]))
+            [plasma.query :as q]))
 
 (deftest construct-test
   (clear-graph)

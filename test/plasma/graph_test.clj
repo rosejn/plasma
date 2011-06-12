@@ -1,5 +1,5 @@
 (ns plasma.graph-test
-  (:use [plasma config util graph]
+  (:use [plasma util graph]
         [jiraph graph]
         test-utils
         clojure.test

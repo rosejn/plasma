@@ -1,7 +1,6 @@
-(ns plasma.query.exec
+(ns plasma.exec
   (:use
-    [plasma util]
-    [plasma.query plan]) ; operator helpers expression])
+    [plasma util plan])
   (:require
     [logjam.core :as log]
     [lamina.core :as lamina]

@@ -1,6 +1,5 @@
-(ns plasma.query.operator-test
-  (:use [plasma util graph]
-        [plasma.query operator]
+(ns plasma.operator-test
+  (:use [plasma util graph operator]
         [clojure test stacktrace]
         [lamina core]
         [jiraph graph]

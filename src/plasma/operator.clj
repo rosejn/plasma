@@ -1,6 +1,5 @@
-(ns plasma.query.operator
-  (:use [plasma graph util]
-        [plasma.query expression helpers]
+(ns plasma.operator
+  (:use [plasma graph util expression helpers]
         clojure.contrib.generic.math-functions
         [jiraph graph]
         [lamina core])

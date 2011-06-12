@@ -1,7 +1,6 @@
 (ns plasma.graph
   (:use
-    [plasma util config]
-    [plasma.net url]
+    [plasma util]
     [plasma.jiraph mem-layer]
     [clojure.contrib.core :only (dissoc-in)])
   (:require
@@ -11,6 +10,7 @@
 
 ; Special uuid used to query for a graph's root node.
 (def ROOT-ID "UUID:ROOT")
+(def META-ID "UUID:META")
 
 (defonce node-events* (lamina/channel))
 (defonce edge-events* (lamina/channel))
@@ -176,7 +176,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
 (defn- init-new-graph
   [root-id]
   (let [root (make-node root-id {:label :root})
-        meta (make-node (config :meta-id) {:root root})]
+        meta (make-node META-ID {:root root})]
     {:root root}))
 
 (defn clear-graph
@@ -191,7 +191,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
             {:graph (jiraph/layer path)}
             {:graph (ref-layer)})]
     (jiraph/with-graph g
-      (let [meta (find-node (config :meta-id))
+      (let [meta (find-node META-ID)
             meta (if meta
                    meta
                    (init-new-graph (uuid)))]
@@ -206,6 +206,13 @@ For example:\n\t(with-graph G (find-node id))\n")))
   "Check whether the node with the given UUID is a proxy node."
   [uuid]
   (contains? (find-node uuid) :proxy))
+
+(defn- url-map [url]
+  (let [match (re-find #"(.*)://([0-9a-zA-Z-_.]*):([0-9]*)" url)
+        [_ proto host port] match]
+    {:proto proto
+     :host host
+     :port (Integer. port)}))
 
 (defmulti peer-sender
   (fn [url]

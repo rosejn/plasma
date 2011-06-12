@@ -1,8 +1,7 @@
-(ns plasma.query.plan
+(ns plasma.plan
   (:require [clojure (set :as set)]
             [logjam.core :as log])
-  (:use [plasma util graph]
-        [plasma.query operator helpers]))
+  (:use [plasma util graph operator helpers]))
 
 (defn path-start-src
   "Determines the starting operator for a single path component,
@@ -207,7 +206,7 @@
         deps-ops (map ops deps)
         _ (log/format :op-node "type: %s\nid: %s\ndeps: %s\nargs: %s " type id deps args)
         op-name (symbol (str (name type) "-op"))
-        op-fn (ns-resolve 'plasma.query.operator op-name)]
+        op-fn (ns-resolve 'plasma.operator op-name)]
     (case type
       :traverse
       (apply op-fn id plan recv-chan args)

@@ -1,4 +1,4 @@
-(ns plasma.query.helpers
+(ns plasma.helpers
   (:use [plasma util]))
 
 (defn plan-op

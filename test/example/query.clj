@@ -1,8 +1,8 @@
 (ns example.query
-  (:use plasma.core
+  (:use [plasma graph construct]
         test-utils
         clojure.stacktrace)
-  (require [plasma.query.core :as q]
+  (require [plasma.query :as q]
            [logjam.core :as log]))
 
 (def acme-graph (open-graph "db/example.query"))

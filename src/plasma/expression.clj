@@ -1,6 +1,5 @@
-(ns plasma.query.expression
-  (:use [plasma util]
-        [plasma.query helpers]
+(ns plasma.expression
+  (:use [plasma util helpers]
         [clojure.walk :only (postwalk)]
         clojure.contrib.generic.math-functions
         clojure.stacktrace)
@@ -100,57 +99,57 @@
 
 (def EXPRESSION-SYMBOLS
   '{
-    inc             plasma.query.expression/inc*
-    dec             plasma.query.expression/dec*
-    nil?            plasma.query.expression/nil?*
-    zero?           plasma.query.expression/zero?*
-    pos?            plasma.query.expression/pos?*
-    neg?            plasma.query.expression/neg?*
-    even?           plasma.query.expression/even?*
-    odd?            plasma.query.expression/odd?*
+    inc             plasma.expression/inc*
+    dec             plasma.expression/dec*
+    nil?            plasma.expression/nil?*
+    zero?           plasma.expression/zero?*
+    pos?            plasma.expression/pos?*
+    neg?            plasma.expression/neg?*
+    even?           plasma.expression/even?*
+    odd?            plasma.expression/odd?*
 
-    abs             plasma.query.expression/abs*
-    acos            plasma.query.expression/acos*
-    asin            plasma.query.expression/asin*
-    atan            plasma.query.expression/atan*
-    atan2           plasma.query.expression/*
-    ceil            plasma.query.expression/ceil*
-    conjugate       plasma.query.expression/conjugate*
-    cos             plasma.query.expression/cos*
-    exp             plasma.query.expression/exp*
-    floor           plasma.query.expression/floor*
-    log             plasma.query.expression/log*
-    rint            plasma.query.expression/rint*
-    round           plasma.query.expression/round*
-    sgn             plasma.query.expression/sgn*
-    sin             plasma.query.expression/sin*
-    sqr             plasma.query.expression/sqr*
-    sqrt            plasma.query.expression/sqrt*
-    tan             plasma.query.expression/tan*
+    abs             plasma.expression/abs*
+    acos            plasma.expression/acos*
+    asin            plasma.expression/asin*
+    atan            plasma.expression/atan*
+    atan2           plasma.expression/*
+    ceil            plasma.expression/ceil*
+    conjugate       plasma.expression/conjugate*
+    cos             plasma.expression/cos*
+    exp             plasma.expression/exp*
+    floor           plasma.expression/floor*
+    log             plasma.expression/log*
+    rint            plasma.expression/rint*
+    round           plasma.expression/round*
+    sgn             plasma.expression/sgn*
+    sin             plasma.expression/sin*
+    sqr             plasma.expression/sqr*
+    sqrt            plasma.expression/sqrt*
+    tan             plasma.expression/tan*
 
-    =               plasma.query.expression/=*
-    ==              plasma.query.expression/==*
-    not=            plasma.query.expression/not=*
-    <               plasma.query.expression/<*
-    >               plasma.query.expression/>*
-    >=              plasma.query.expression/>=*
-    <=              plasma.query.expression/<=*
-    +               plasma.query.expression/+*
-    -               plasma.query.expression/-*
-    mod             plasma.query.expression/mod*
-    /               plasma.query.expression/div*
-    *               plasma.query.expression/mul*
+    =               plasma.expression/=*
+    ==              plasma.expression/==*
+    not=            plasma.expression/not=*
+    <               plasma.expression/<*
+    >               plasma.expression/>*
+    >=              plasma.expression/>=*
+    <=              plasma.expression/<=*
+    +               plasma.expression/+*
+    -               plasma.expression/-*
+    mod             plasma.expression/mod*
+    /               plasma.expression/div*
+    *               plasma.expression/mul*
 
-    bit-and         plasma.query.expression/bit-and*
-    bit-or          plasma.query.expression/bit-or*
-    bit-xor         plasma.query.expression/bit-xor*
-    bit-flip        plasma.query.expression/bit-flip*
-    bit-not         plasma.query.expression/bit-not*
-    bit-clear       plasma.query.expression/bit-clear*
-    bit-set         plasma.query.expression/bit-set*
-    bit-shift-left  plasma.query.expression/bit-shift-left*
-    bit-shift-right plasma.query.expression/bit-shift-right*
-    bit-test        plasma.query.expression/bit-test*
+    bit-and         plasma.expression/bit-and*
+    bit-or          plasma.expression/bit-or*
+    bit-xor         plasma.expression/bit-xor*
+    bit-flip        plasma.expression/bit-flip*
+    bit-not         plasma.expression/bit-not*
+    bit-clear       plasma.expression/bit-clear*
+    bit-set         plasma.expression/bit-set*
+    bit-shift-left  plasma.expression/bit-shift-left*
+    bit-shift-right plasma.expression/bit-shift-right*
+    bit-test        plasma.expression/bit-test*
     })
 
 (defn- add-property-op

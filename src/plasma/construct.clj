@@ -1,10 +1,8 @@
-(ns plasma.query.construct
-  (:use [plasma util graph viz]
-        [plasma.net url]
-        [plasma.query operator helpers])
+(ns plasma.construct
+  (:use [plasma util graph viz operator helpers])
   (:require [logjam.core :as log]
             [jiraph.graph :as jiraph]
-            [plasma.query.core :as q]))
+            [plasma.query :as q]))
 
 (defmacro nodes
   "Convert a node-spec into a builder-query."

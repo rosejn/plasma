@@ -1,8 +1,4 @@
-* extend Peer to support the graph API directly without with-peer-graph
-
 * start using transactions
-
-* add a function to peer that returns its url
 
 * Add a (graph-event-channel [g]) which will publish an event any time the graph
 is modified.
@@ -29,32 +25,9 @@ functions when bad arguments are passed
 * create a recur-query that will smartly be both local and remote
 depending on whether it gets a proxy node as a result
 
-----------
-
-* new peer connections should always send their URL as the first message so they
-  can be correctly stored in the connection cache, otherwise we just have the
-  outgoing port number...
-
-* when a connection is closed (or fails) remotely we need to close it and remove
- it from the connection cache.
-
-* Add various error handling tests for connections and peer operations, and
-look at moving some of the code to pipelines.
-
 ------------
 
-Supporting experiments:
-
-* enable logging of typical networking metrics:
- - bytes
- - messages
- - peers
- - latency
-
 * implement recursive and iterative operators
-
-* implement query packet TTL counter that decrements at each hop
- - packets dropped when (zero? TTL)
 
 ----------------------------------------------------------
 
@@ -87,3 +60,26 @@ operator tree
  - expressions
  - property-loads (to load as we traverse)
  - projection
+
+------------------
+Minimized query plan:
+
+* path(s)
+* selection(s)
+* properties to load
+--
+* sort
+--
+* limit, choose
+--
+* aggregate ops
+--
+* projection
+
+
+-------------------------
+
+Logging:
+* logging via a log channel rather than via logjam directly
+
+

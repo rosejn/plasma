@@ -1,7 +1,7 @@
-(ns plasma.query.expression-test
-  (:use [plasma.query expression]
+(ns plasma.expression-test
+  (:use [plasma expression]
         clojure.test)
-  (:require [plasma.query.core :as q]))
+  (:require [plasma.query :as q]))
 
 (comment deftest expr-test
   (-> (q/path [f [:foo]

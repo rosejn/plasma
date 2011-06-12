@@ -1,7 +1,6 @@
-(ns plasma.query.core
+(ns plasma.query
   (:use
-    [plasma util]
-    [plasma.query plan exec operator helpers expression])
+    [plasma util plan exec operator helpers expression])
   (:require
     [clojure (zip :as zip)]
     [clojure (set :as set)]

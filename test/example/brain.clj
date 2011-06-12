@@ -1,5 +1,5 @@
 (ns example.brain
-  (:use plasma.core
+  (:use [plasma graph construct]
         test-utils))
 
 ; NOTES:

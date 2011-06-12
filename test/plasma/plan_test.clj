@@ -1,6 +1,6 @@
-(ns plasma.query.plan-test
+(ns plasma.plan-test
   (:use
-    [plasma.query core plan exec]
+    [plasma query plan exec]
     [clojure test stacktrace]
     test-utils)
   (:require [logjam.core :as log]))
