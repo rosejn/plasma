@@ -1,6 +1,6 @@
 (ns plasma.graph
   (:use
-    [plasma util]
+    [plasma util remote]
     [plasma.jiraph mem-layer]
     [clojure.contrib.core :only (dissoc-in)])
   (:require
@@ -87,6 +87,7 @@
    id))
 
 (declare incoming-nodes)
+
 (defn remove-node
   "Remove a node and all of its incoming edges from the graph."
   [uuid]
@@ -207,14 +208,8 @@ For example:\n\t(with-graph G (find-node id))\n")))
   [uuid]
   (contains? (find-node uuid) :proxy))
 
-(defn- url-map [url]
-  (let [match (re-find #"(.*)://([0-9a-zA-Z-_.]*):([0-9]*)" url)
-        [_ proto host port] match]
-    {:proto proto
-     :host host
-     :port (Integer. port)}))
-
-(defmulti peer-sender
-  (fn [url]
-    (keyword (:proto (url-map url)))))
-
+; TODO: need to decide how to jump from one local graph/edge to another.  Using
+; a file path, registered local databases, different layer names in the same
+; graph...
+(defmethod remote-query-fn :jiraph [url]
+  (let [gname (:host url)]))

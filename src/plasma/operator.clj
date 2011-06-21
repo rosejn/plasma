@@ -1,5 +1,5 @@
 (ns plasma.operator
-  (:use [plasma graph util expression helpers]
+  (:use [plasma graph remote util expression helpers]
         clojure.contrib.generic.math-functions
         [jiraph graph]
         [lamina core])
@@ -113,7 +113,7 @@
   sub-query."
   [plan end-op-id start-node-id url]
   (let [sub-query (build-sub-query plan start-node-id end-op-id)
-        sender (peer-sender url)]
+        sender (remote-query-fn url)]
     (log/to :flow "[remote-sub-query]" (:id sub-query))
     ;(log/to :op "[remote-sub-query] sub-query: " sub-query)
     (sender sub-query)))

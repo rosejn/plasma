@@ -1,6 +1,6 @@
 (ns plasma.query
   (:use
-    [plasma util plan exec operator helpers expression])
+    [plasma graph util plan exec operator helpers expression])
   (:require
     [clojure (zip :as zip)]
     [clojure (set :as set)]
@@ -32,6 +32,11 @@
         expr-vars (vec (map #(assoc % :bind-key (get (:pbind plan)
                                                  (symbol (:pvar %))))
                         expr-vars))]
+    (when-let [missing-bind (some #(if (nil? (:bind-key %))
+                                     (:pvar %))
+                                  expr-vars)]
+      (throw (Exception.
+               (format "Unbound expression variable: %s" missing-bind))))
     (append-root-op plan {:type :filter
                           :id (uuid)
                           :deps [(:root plan)]
@@ -317,3 +322,11 @@
        (fn [] (deliver p (lamina/channel-seq res-chan))))
      (await-promise p (+ timeout PROMISE-WAIT-TIME)))))
 
+(defn query-delete
+  "Executes a query that is expected to return a set of node maps containing
+  the :id property, and then deletes the corresponding nodes."
+  [plan & args]
+  (let [res-chan (apply query-channel (with-result-project plan) args)]
+    (lamina/on-closed res-chan
+      (doseq [node (lamina/channel-seq res-chan)]
+        (remove-node (:id node))))))

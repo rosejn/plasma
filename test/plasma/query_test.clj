@@ -1,7 +1,6 @@
 (ns plasma.query-test
-  (:use [plasma util graph viz query operator exec]
+  (:use [plasma util graph viz query operator exec construct]
         [clojure test stacktrace]
-        [jiraph graph]
         lamina.core
         clojure.contrib.generic.math-functions
         test-utils)
@@ -59,7 +58,9 @@
             (where (= (:label 'synth) :kick))
             (project ['sesh :label]))]
     (is (= #{:red-pill :take-six}
-           (set (map :label (query p)))))))
+           (set (map :label (query p))))))
+  (is (thrown? Exception (query (-> (path [:sessions :session])
+                                  (where (= (:foo 'bogus) :asdf)))))))
 
 (deftest auto-project-test
   (let [p (-> (path [sesh [:sessions :session]
@@ -109,6 +110,28 @@
         r2 (query q2)]
     (is (= 4 (count r1) (count r2)))
     (is (= r1 (reverse r2)))))
+
+(defn- build-test-graph
+  []
+  (construct* (-> (nodes [root ROOT-ID
+                          base :base
+                          a {:score 9}
+                          b {:score 8}
+                          c {:score 2}
+                          d {:score 4}])
+                (edges [root base :foo
+                        base a :bar
+                        base b :bar
+                        base c :bar
+                        base d :bar]))))
+
+(deftest delete-test
+  (clear-graph)
+  (build-test-graph)
+  (is (= 4 (count (query (path [bar [:foo :bar]])))))
+  (query-delete (-> (path [bar [:foo :bar]])
+                  (where (> (:score 'bar) 5))))
+  (is (= 2 (count (query (path [:foo :bar]))))))
 
 (comment deftest recurse-test
   (recurse (path [:net :peer])
