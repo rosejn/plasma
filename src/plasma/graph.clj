@@ -1,11 +1,11 @@
 (ns plasma.graph
   (:use
     [plasma util remote]
-    [plasma.jiraph mem-layer]
     [clojure.contrib.core :only (dissoc-in)])
   (:require
     [logjam.core :as log]
     [jiraph.graph :as jiraph]
+    [jiraph.stm-layer :as mem-layer]
     [lamina.core :as lamina]))
 
 ; Special uuid used to query for a graph's root node.
@@ -162,7 +162,7 @@ For example:\n\t(with-graph G (find-node id))\n")))
 (defn get-edges [node & [pred]]
   (let [n (find-node node)]
     (if pred
-      (jiraph/edges n pred)
+      (jiraph/filter-edges pred n)
       (jiraph/edges n))))
 
 (defn incoming-nodes
@@ -189,8 +189,8 @@ For example:\n\t(with-graph G (find-node id))\n")))
   "Open a graph database located at path, creating it if it doesn't already exist."
   [& [path]]
   (let [g (if path
-            {:graph (jiraph/layer path)}
-            {:graph (ref-layer)})]
+            {:graph (jiraph/make-layer path)}
+            {:graph (mem-layer/make)})]
     (jiraph/with-graph g
       (let [meta (find-node META-ID)
             meta (if meta

@@ -2,7 +2,8 @@
   :description "A graph database query engine."
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
-                 [jiraph "0.6.1-SNAPSHOT"]
+                 [jiraph "0.7.0-SNAPSHOT"]
+                 [tokyocabinet "1.24.1-SNAPSHOT"]
                  [lamina "0.4.0-alpha3-SNAPSHOT"]
                  [clojure-protobuf "0.3.4"]
                  [org.clojars.overtone/vijual "0.2.1"]
