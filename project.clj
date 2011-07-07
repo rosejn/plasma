@@ -7,8 +7,8 @@
                  [clojure-protobuf "0.3.4"]
                  [org.clojars.overtone/vijual "0.2.1"]
                  [logjam "0.1.0-SNAPSHOT"]]
-  :dev-dependencies [[marginalia "0.5.1-SNAPSHOT"]]
-  :tasks [marginalia.tasks])
+  :dev-dependencies [[cake-marginalia "0.6.0"]]
+  :tasks [cake-marginalia.tasks])
 
 (import '[java.io File])
 (use '[clojure.java.io :only (delete-file)])
