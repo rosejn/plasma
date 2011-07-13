@@ -87,7 +87,8 @@
 (deftest average-test
   (let [q (-> (path [synth [:music :synths :synth]])
             (avg 'synth :score))]
-    (is (= (average [0.8 0.3 0.4 0.6]) (first (query q))))))
+    (is (= (Math/round (* 100 (average [0.8 0.3 0.4 0.6])))
+           (Math/round (* 100 (first (query q))))))))
 
 (deftest limit-test
   (let [q (limit (path [synth [:music :synths :synth]])

@@ -146,7 +146,7 @@
         tree-desc (assoc tree :proj avg-desc)]
     (enqueue-and-close (:in p1) ROOT-ID)
     (Thread/sleep 20)
-    (is (= (average [0.8 0.3 0.4 0.6]) (first (result tree-desc))))))
+    (is (= (Math/round (* 100 (average [0.8 0.3 0.4 0.6]))) (Math/round (* 100 (first (result tree-desc))))))))
 
 ; TODO: Finish me!
 (defn group-by-op-test []
