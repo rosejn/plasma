@@ -39,6 +39,7 @@
 ; * map       (a new node's properties)
 ; * keyword   (a new node's :label property)
 ; * path expression  (select nodes to link with other nodes)
+; * a seq of node UUIDs or node maps
 
 (defn- make-nodes
   "Convert a node-spec to a node-id map."
@@ -48,7 +49,9 @@
                       [sym (cond
                              (uuid? props) props
                              (q/query? props) (map :id (q/query props))
-                             (map? props)  (make-node props))])
+                             (map? props)  (make-node props)
+                             (or (seq? props)
+                                 (vector? props)) (map make-node props))])
                     (:nodes spec))
         node-map (into {} id-mapped)
         node-map (assoc node-map 'ROOT-ID ROOT-ID)]

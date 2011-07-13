@@ -116,7 +116,7 @@
        (str "-Nfontsize=" node-font-size)
        "-o" out))))
 
-(def APP "evince")
+(def APP "open")
 
 (defn show-dot-graph
   ([g] (show-dot-graph g {}))
@@ -126,7 +126,9 @@
          out (str "/tmp/plasma-graph." out-format)]
      (save-dot-graph g "/tmp/plasma-graph.dot" options)
      (save-graph-image "/tmp/plasma-graph.dot" out options)
-     (sh app out))))
+     (if-let [sub-app (:sub-app options)]
+       (sh app sub-app out)
+       (sh app out)))))
 
 (defn graph->ps
   [g & [options]]
@@ -134,7 +136,7 @@
 
 (defn graph->browser
   [g & [options]]
-  (show-dot-graph g (merge options {:out-format "svg" :app "chromium-browser"})))
+  (show-dot-graph g (merge options {:out-format "svg" :app "open" :sub-app "/Applications/Google\\ Chrome.app"})))
 
 (defn- label-table
   [top bottom]

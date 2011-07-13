@@ -1,3 +1,6 @@
+* add the ability for construct to take a seq of maps for a node entry, and then
+when pointed to in edges have an edge created per node.
+
 * start using transactions
 
 * Add a (graph-event-channel [g]) which will publish an event any time the graph
